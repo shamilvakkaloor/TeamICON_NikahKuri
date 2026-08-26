@@ -630,6 +630,18 @@ table.data tr.dim-row td {
   opacity: 0.55;
 }
 
+/* An inline text button that reads as a link inside a meta line. */
+.linkish {
+  border: 0;
+  background: none;
+  padding: 0;
+  margin-left: var(--s2);
+  color: var(--green);
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 table.data td.truncate {
   max-width: 190px;
   overflow: hidden;

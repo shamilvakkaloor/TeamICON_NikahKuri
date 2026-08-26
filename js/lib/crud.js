@@ -248,11 +248,37 @@ export function recordPayment(data) {
   });
 }
 
+/**
+ * Remove a payment from the ledger without erasing it.
+ *
+ * Payments are never deleted (rule 24) — a correction to zero leaves the trail
+ * intact. The row keeps its place in the journal, marked as removed, and stops
+ * counting towards anything because its amount is zero. That matters because
+ * repayment mirrors what was actually received: a hard delete would silently
+ * change what a past groom owes, with nothing left to explain why.
+ *
+ * Reversible — editing the amount back above zero un-removes it.
+ */
+export async function voidPayment(id, previousAmount, audit) {
+  const batch = writeBatch(getDb());
+  batch.update(ref("payments", id), { amount: 0, voided: true, edited: true });
+  batch.set(ref("auditLog", crypto.randomUUID()), {
+    ...audit,
+    field: "removed",
+    oldValue: previousAmount,
+    newValue: 0,
+    changedAt: serverTimestamp(),
+  });
+  await batch.commit();
+}
+
 /** A correction. The old value survives in the audit entry (rule 24). */
 export async function editPayment(id, patch, audit) {
   const batch = writeBatch(getDb());
   const out = { ...patch, edited: true };
   if (patch.date) out.date = toTimestamp(patch.date);
+  // Correcting a removed payment back to a real figure restores it.
+  if (typeof patch.amount === "number") out.voided = patch.amount === 0;
   batch.update(ref("payments", id), out);
   batch.set(subref("auditLog", crypto.randomUUID()), {
     ...audit,

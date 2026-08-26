@@ -20,24 +20,29 @@ import { dateInputValue, fmtDate, money } from "../lib/format.js";
 import { activeRound, data, dataStore, memberById } from "../lib/data.js";
 import { buildRoundLedger, loadRoundContext } from "../lib/roundLedger.js";
 import { currentMember, isAdmin, isCoordinator } from "../lib/auth.js";
-import { editPayment, recordPayment } from "../lib/crud.js";
+import { editPayment, recordPayment, voidPayment } from "../lib/crud.js";
 import { openPaymentsImport } from "../components/import-payments.js";
 
 export function renderPayments(host) {
-  const state = { search: "", roundFilter: activeRound()?.id || "all" };
+  const state = { search: "", roundFilter: activeRound()?.id || "all", showRemoved: false };
   const unsub = dataStore.subscribe(draw);
 
   function draw() {
     const { payments, rounds } = data();
     const q = state.search.trim().toLowerCase();
 
-    const filtered = payments.filter((p) => {
+    const inScope = payments.filter((p) => {
       if (state.roundFilter !== "all" && p.kuriId !== state.roundFilter) return false;
       if (!q) return true;
       const from = memberById(p.fromMemberId)?.name.toLowerCase() || "";
       const to = memberById(p.toMemberId)?.name.toLowerCase() || "";
       return from.includes(q) || to.includes(q);
     });
+
+    // Removed payments stay in the journal but are hidden by default — after a
+    // bad import there can be a lot of them, and they carry no money.
+    const removedCount = inScope.filter((p) => p.voided).length;
+    const filtered = state.showRemoved ? inScope : inScope.filter((p) => !p.voided);
 
     const total = filtered.reduce((t, p) => t + p.amount, 0);
     const canWrite = isAdmin() || isCoordinator();
@@ -118,7 +123,25 @@ export function renderPayments(host) {
         ),
         el(
           "div.spread.small.muted",
-          el("span", `${filtered.length} payments`),
+          el(
+            "span",
+            `${filtered.length} payment${filtered.length === 1 ? "" : "s"}`,
+            removedCount > 0
+              ? el(
+                  "button.linkish",
+                  {
+                    type: "button",
+                    onclick: () => {
+                      state.showRemoved = !state.showRemoved;
+                      draw();
+                    },
+                  },
+                  state.showRemoved
+                    ? "hide removed"
+                    : `${removedCount} removed — show`,
+                )
+              : null,
+          ),
           Money(total, { size: "sm", tone: "paid" }),
         ),
         filtered.length === 0
@@ -138,10 +161,11 @@ export function renderPayments(host) {
                     "div.ledger-title",
                     `${memberById(p.fromMemberId)?.name || "?"} → ${memberById(p.toMemberId)?.name || "?"}`,
                   );
-                  if (p.edited) title.append(" ", Badge("edited", "pending"));
+                  if (p.voided) title.append(" ", Badge("removed", "owed"));
+                  else if (p.edited) title.append(" ", Badge("edited", "pending"));
 
                   return el(
-                    "div.ledger-row",
+                    `div.ledger-row${p.voided ? ".dim" : ""}`,
                     el("span.avatar", TeamDot(p.team)),
                     el(
                       "div.ledger-main",
@@ -151,9 +175,16 @@ export function renderPayments(host) {
                         `${fmtDate(p.date)} · Kuri ${round?.kuriNumber ?? "?"} · ${p.team}${p.notes ? ` · ${p.notes}` : ""}`,
                       ),
                     ),
-                    Money(p.amount, { tone: "paid" }),
+                    Money(p.amount, { tone: p.voided ? "muted" : "paid" }),
+                    isAdmin() && !p.voided
+                      ? Button("Remove", {
+                          variant: "ghost",
+                          size: "sm",
+                          onClick: () => openRemoveDialog(p),
+                        })
+                      : null,
                     isAdmin()
-                      ? Button("Edit", {
+                      ? Button(p.voided ? "Restore" : "Edit", {
                           variant: "ghost",
                           size: "sm",
                           onClick: () => openEditDialog(p),
@@ -299,6 +330,89 @@ function openRecordDialog() {
       close();
     } catch (e) {
       errorHost.append(Notice(e?.message || "Could not record the payment.", "danger"));
+    }
+  }
+}
+
+/**
+ * Remove a payment from the ledger.
+ *
+ * This zeroes it rather than deleting the record. Repayment mirrors what was
+ * actually received, so a payment is not just a row — it is the evidence for
+ * what somebody is owed back in his own round. Erasing it outright would move
+ * that figure with nothing left to explain why, which is exactly the argument
+ * this app exists to prevent.
+ */
+function openRemoveDialog(payment) {
+  const me = currentMember();
+  const { rounds } = data();
+  const round = rounds.find((r) => r.id === payment.kuriId);
+  const from = memberById(payment.fromMemberId);
+  const to = memberById(payment.toMemberId);
+
+  const state = { reason: "" };
+  const errorHost = el("div");
+
+  const close = openDialog({
+    title: "Remove this payment?",
+    body: el(
+      "div.stack",
+      errorHost,
+      el(
+        "div.notice",
+        el(
+          "span.small",
+          `${from?.name || "?"} → ${to?.name || "?"} · ${money(payment.amount)} · Kuri ${round?.kuriNumber ?? "?"} · ${fmtDate(payment.date)}`,
+        ),
+      ),
+      Notice(
+        `It stops counting towards Kuri ${round?.kuriNumber ?? "?"} immediately, and ` +
+          `${to?.name || "the groom"} will no longer owe ${from?.name || "him"} this money back ` +
+          "in his own round.",
+        "warn",
+      ),
+      el(
+        "p.small.muted",
+        "The row stays in the journal marked ",
+        el("strong", "removed"),
+        ", with your reason in the audit log. You can restore it later. Nothing is erased — that " +
+          "is what keeps a corrected figure explainable a year from now.",
+      ),
+      Field({
+        label: "Why is it being removed?",
+        hint: "Shown in the audit log.",
+        control: Input({
+          value: state.reason,
+          placeholder: "e.g. entered twice during the history import",
+          oninput: (e) => {
+            state.reason = e.target.value;
+          },
+        }),
+      }),
+    ),
+    footer: [
+      Button("Cancel", { variant: "outline", onClick: () => close() }),
+      Button("Remove payment", { variant: "danger", onClick: submit }),
+    ],
+  });
+
+  async function submit() {
+    errorHost.replaceChildren();
+    if (!state.reason.trim()) {
+      errorHost.append(Notice("A reason is required — it goes in the audit log.", "danger"));
+      return;
+    }
+    try {
+      await voidPayment(payment.id, payment.amount, {
+        targetType: "payment",
+        targetId: payment.id,
+        changedByMemberId: me?.id || "",
+        reason: state.reason.trim(),
+      });
+      toast("Payment removed.", "success");
+      close();
+    } catch (e) {
+      errorHost.append(Notice(e?.message || "Could not remove the payment.", "danger"));
     }
   }
 }

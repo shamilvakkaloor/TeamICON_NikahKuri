@@ -71,6 +71,8 @@ export function paymentFrom(snap) {
     date: ms(d.date),
     recordedByMemberId: d.recordedByMemberId || "",
     edited: d.edited ?? false,
+    /** Removed from the ledger but kept in the journal (rule 24). */
+    voided: d.voided ?? false,
     notes: d.notes || "",
   };
 }

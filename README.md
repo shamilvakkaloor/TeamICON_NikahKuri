@@ -77,7 +77,7 @@ so the obligation is visible at the moment it is created.
 |---|---|
 | **Home** | The groom's photo and details, countdown to the Kuri Last Date, live team-by-team progress, and your own due |
 | **Rounds** | Open a round, review the generated dues *with the reason for each figure*, close it |
-| **Payments** | Record money as it comes in. Partial payments accumulate. Corrections leave a trail |
+| **Payments** | Record money as it comes in. Partial payments accumulate. Corrections and removals leave a trail |
 | **Mine** | Your own history and upcoming dues, with the basis shown for every row |
 | **Members** | The directory. Admin adds people and hands over roles. CSV import and export |
 | **Reports** | By round, by team, by member. CSV export |

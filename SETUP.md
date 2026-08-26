@@ -254,9 +254,21 @@ zero and he forfeits this groom's contribution in his own round. He cannot opt
 out of a **Repayment**.
 
 **A payment was recorded wrong.**
-Payments → **Edit**. Payments are never deleted; the correction leaves a
-permanent "edited" marker and an audit entry with your reason. Be aware it
-changes what that member is owed back in his own round.
+Payments → **Edit** to correct the figure, or **Remove** if it should never
+have been there at all.
+
+Neither deletes the record. Removing sets the payment to ₹0 and marks the row
+**removed**: it stops counting towards the round immediately and the groom no
+longer owes that money back — but the row stays in the journal with your reason
+in the audit log, and **Restore** puts it back.
+
+That is deliberate. Repayment mirrors what was actually received, so a payment
+is not just a row — it is the evidence for what somebody is owed in his own
+round. Erasing it outright would move that figure with nothing left to explain
+why, which is the argument this app exists to prevent.
+
+Removed rows are hidden from the list by default; the count next to
+"*n* payments" reveals them.
 
 **Why does he owe ₹7,000 and I owe ₹3,500?**
 Open **Mine** — every row carries its reason. Almost always the answer is that
