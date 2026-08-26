@@ -3,6 +3,9 @@ rules_version = '2';
 // -----------------------------------------------------------------------------
 // Nikah Kuri — Firestore security rules
 //
+// Paste this whole file into the Firebase console:
+//   Firestore Database → Rules → replace everything → Publish
+//
 // The shape of the problem:
 //   * All payment data is open to every signed-in member (rule 12), so member
 //     reads are simple: authenticated + on the roster.
@@ -25,12 +28,14 @@ rules_version = '2';
 // Rules `get()` it directly. The app keeps it in step whenever a member is
 // created or edited.
 //
-// Bootstrapping: the first admin's index document has to be created by hand in
-// the Firebase console, because no admin exists yet to write it. SETUP.md walks
-// through this.
-//
-// A bad rules deploy can lock the whole group out, so deploy these manually and
-// deliberately rather than from CI.
+// The first admin
+// ---------------
+// Before any admin exists there is nobody who can write that index, which
+// would be a deadlock. So the rules allow exactly one bootstrap: while
+// `settings/app` does not exist, any signed-in account may create it together
+// with its own admin member record. The in-app setup screen does this once,
+// and after that the door is closed permanently — `settings/app` exists, so
+// the condition can never be true again.
 // -----------------------------------------------------------------------------
 
 service cloud.firestore {
@@ -38,8 +43,12 @@ service cloud.firestore {
 
     // --- caller identity -------------------------------------------------
 
+    function email() {
+      return request.auth.token.email.lower();
+    }
+
     function indexPath() {
-      return /databases/$(database)/documents/memberIndex/$(request.auth.token.email.lower());
+      return /databases/$(database)/documents/memberIndex/$(email());
     }
 
     function onRoster() {
@@ -68,13 +77,36 @@ service cloud.firestore {
       return me().team;
     }
 
+    // True only until the very first admin has been created.
+    function setupPending() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && !exists(/databases/$(database)/documents/settings/app);
+    }
+
+    // --- setup -----------------------------------------------------------
+    // Readable by anyone so the app can tell, before sign-in, whether to show
+    // the login or the first-run screen. It holds only the group name.
+
+    match /settings/app {
+      allow read: if true;
+      allow create: if setupPending();
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+
     // --- the role index --------------------------------------------------
     // Readable by members so the app can show who holds which role; writable
     // only by the admin, since it is what the rules themselves trust.
 
-    match /memberIndex/{email} {
+    match /memberIndex/{emailKey} {
       allow read: if isMember();
-      allow write: if isAdmin();
+      allow create: if isAdmin()
+        // The bootstrap: the founder may create his own entry, as admin only.
+        || (setupPending()
+            && emailKey == email()
+            && request.resource.data.role == 'admin');
+      allow update, delete: if isAdmin();
     }
 
     // --- members ---------------------------------------------------------
@@ -82,14 +114,16 @@ service cloud.firestore {
 
     match /members/{memberId} {
       allow read: if isMember();
-      allow create, update: if isAdmin();
+      allow create: if isAdmin()
+        || (setupPending() && request.resource.data.email == email());
+      allow update: if isAdmin();
       allow delete: if false;  // members exit through settlement, never deletion
     }
 
     // --- contact details -------------------------------------------------
     // Mobile numbers are contact details, not payment data, and there is no
-    // reason for the whole group to be able to export them. Rules are
-    // document-level, so these cannot live on the member document.
+    // reason for the whole group to be able to export them. Firestore rules
+    // are document-level, so these cannot live on the member document.
 
     match /memberContacts/{memberId} {
       allow read, write: if isAdmin();
@@ -127,7 +161,8 @@ service cloud.firestore {
       allow read: if isMember();
 
       // A coordinator records money only for his own team; the admin records
-      // anything. New payments must not arrive pre-marked as edited.
+      // anything. New payments must not arrive pre-marked as edited, and
+      // toMemberId must be present — the whole pairwise rule depends on it.
       allow create: if (isAdmin()
                         || (isCoordinator() && request.resource.data.team == myTeam()))
                     && request.resource.data.edited == false
@@ -178,20 +213,10 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // --- server-maintained projections -----------------------------------
-
-    match /kuriRoundSummaries/{kuriId} {
-      allow read: if isMember();
-      allow write: if false;
-    }
-
-    match /memberTotals/{memberId} {
-      allow read: if isMember();
-      allow write: if false;
-    }
-
+    // --- the public projection -------------------------------------------
     // The only world-readable path in the database. Round number, groom name
     // and photo, dates and team totals — nothing else.
+
     match /publicRounds/{kuriId} {
       allow read: if true;
       allow write: if isAdmin();

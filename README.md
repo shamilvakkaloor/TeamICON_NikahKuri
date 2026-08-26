@@ -4,11 +4,15 @@ A rotating wedding-assistance fund (*kuri*) for a 33-person class group split
 across four regional teams: **KODUVALLY, KOZHIKODE, MALAPPURAM, VADAKARA**.
 
 Members take turns as *groom of the round*. A groom pays nothing into his own
-round but pays normally into every other one. This app replaces the Google
-Sheet the group runs on today — where JOURNAL was the only real data and every
-other tab was a pivot somebody had to keep in sync by hand.
+round but pays normally into every other one. This replaces the Google Sheet
+the group runs on today — where JOURNAL was the only real data and every other
+tab was a pivot somebody had to keep in sync by hand.
 
 Here, `payments` is the journal and everything else is computed.
+
+**No build step.** Native ES modules and plain CSS, with Firebase loaded from
+Google's CDN. Drag the folder onto Netlify Drop and it is live. See
+[SETUP.md](SETUP.md).
 
 ---
 
@@ -25,7 +29,8 @@ make it specific to **each pair of members**. For member M in groom G's round:
 3. Otherwise → M gives the amount the admin has set for him, defaulting to
    **₹7,000**.
 
-Rule 2 is why every payment records **`toMemberId`** — the groom. Without it
+Rule 2 is why every payment records **who the groom was**. The sheet leaves the
+groom implied by which column a row sits in; without it as an explicit field
 you cannot answer *"how much did G give M?"*, and the whole model collapses.
 
 Three consequences fall out of this for free, rather than needing special cases:
@@ -38,12 +43,12 @@ Three consequences fall out of this for free, rather than needing special cases:
   never paid the grooms of rounds 1–9, so they owe him nothing when his turn
   comes. This is intended, not a gap.
 
-The rules live in [`src/domain/ledger.ts`](src/domain/ledger.ts), deliberately
-free of any Firebase import, with the cases above covered in
-[`ledger.test.ts`](src/domain/ledger.test.ts).
+The rules live in [`js/domain/ledger.js`](js/domain/ledger.js) — plain data in,
+plain data out, no Firebase import. If you have Node on your machine you can
+run them; the app itself never needs it:
 
 ```bash
-npx vitest run
+node --test js/domain/ledger.test.js
 ```
 
 ---
@@ -55,33 +60,32 @@ The admin sets amounts, and **every change carries a scope**:
 - **Only this round** — a one-off that does not carry forward. This is the
   default, because in practice almost every change is a one-off.
 - **From this round onward** — becomes the member's standing amount, appended
-  to `amountHistory` and still editable later.
+  to his amount history and still editable later.
 
 Where the two collide, **the one-off wins** — it was set deliberately for that
 round. The round's dues screen flags where a standing change didn't take effect
 so the admin can see it.
 
 Entering more than ₹7,000 shows a confirmation naming who will owe that back,
-so the obligation is visible at the moment it's created.
+so the obligation is visible at the moment it is created.
 
 ---
 
-## Running it
+## What's on screen
 
-```bash
-npm install
-cp .env.example .env.local   # then fill in the six Firebase values
-npm run dev
-```
-
-Without `.env.local` the app renders a setup notice rather than an opaque SDK
-error. Full walkthrough in [SETUP.md](SETUP.md).
-
-| Command | |
+| Screen | |
 |---|---|
-| `npm run dev` | dev server |
-| `npm run build` | typecheck + production build |
-| `npx vitest run` | domain rule tests |
+| **Home** | The groom's photo and details, countdown to the Kuri Last Date, live team-by-team progress, and your own due |
+| **Rounds** | Open a round, review the generated dues *with the reason for each figure*, close it |
+| **Payments** | Record money as it comes in. Partial payments accumulate. Corrections leave a trail |
+| **Mine** | Your own history and upcoming dues, with the basis shown for every row |
+| **Members** | The directory. Admin adds people and hands over roles |
+| **Reports** | By round, by team, by member. CSV export |
+| **Who owes whom** | The pairwise view the spreadsheet never had |
+| **Handover** | Four separate per-team handovers to the groom, not one pooled payment |
+| **Settlement** | Exit reconciliation, with the exit gated until every line is settled |
+| **Audit log** | Every correction to a closed round, permanently |
+| **Public page** | `#/public` — round summaries and the current groom, no login |
 
 ---
 
@@ -91,7 +95,7 @@ error. Full walkthrough in [SETUP.md](SETUP.md).
 |---|---|
 | **Admin** (single, transferable) | Everything: members, amounts, rounds, payments, opt-outs, closing rounds, settlement |
 | **Coordinator** (one per team) | Records his own team's collections and hands the team total to the groom |
-| **Member** | Views his own dues with the *reason* for each, plus all group-wide payment data |
+| **Member** | Views his own dues with the reason for each, plus all group-wide payment data |
 | **Public** | Round summaries and the current groom — nothing else |
 
 Admin and coordinators are ordinary kuri members who pay in and take their
@@ -103,16 +107,16 @@ straight to ordinary member — the app enforces exactly one admin at a time.
 
 ## How access control actually works
 
-Two decisions here are load-bearing, and both exist because **Firestore rules
-are document-level and cannot run queries**:
+Three decisions here are load-bearing, and the first two exist because
+**Firestore rules are document-level and cannot run queries**:
 
 **Roles resolve through `memberIndex/{email}`.** Member documents are created
 by the admin, with auto-IDs, long before that person first signs in — so the
 document ID is never the Firebase Auth uid, and rules can't look a member up by
-uid or search by email. Instead a small admin-maintained document keyed by
-lowercased email holds the role, team and status, and the rules `get()` it
-directly. `updateMember()` keeps it in step; **if it drifts, that member
-silently loses access.**
+uid or search `members` by email. Instead a small admin-maintained document
+keyed by lowercased email holds the role, team and status, and the rules read
+it directly. `updateMember()` keeps it in step; **if it drifts, that member
+silently loses access** (re-saving them under Members → Edit fixes it).
 
 **Mobile numbers live in `memberContacts/{memberId}`, not on the member
 document.** A `mobile` field on `members` would be readable by every signed-in
@@ -129,6 +133,12 @@ Everything else: any member on the roster reads everything (all payment data is
 open to the group by design); only the admin writes, except that a coordinator
 may record payments carrying his own team.
 
+**The first admin** is created by the in-app setup screen. The rules allow
+exactly one bootstrap write — while `settings/app` does not exist, a signed-in
+account may create it together with its own admin record. After that the door
+closes permanently. This is why nothing has to be hand-created in the Firebase
+console.
+
 ---
 
 ## Data model
@@ -138,60 +148,73 @@ members/{id}                     name, team, email, role, status,
                                  joinedAtKuriNumber, standingAmount, amountHistory
 memberIndex/{email}              role/team/status — what the security rules read
 memberContacts/{memberId}        mobile — admin only
+settings/app                     group name; its existence closes the setup door
 kuriRounds/{kuriId}              kuriNumber, groomMemberId, dates, status
                                  (no flat due amount — see below)
-roundDues/{kuriId}/members/{id}  dueAmount + basis + mirroredFromPaymentIds
+roundDues/{kuriId}/members/{id}  dueAmount + basis + which payments it mirrors
 roundOverrides/{kuriId}/…        one-off amounts, this round only
 roundParticipation/{kuriId}/…    opt-outs
 payments/{id}                    THE JOURNAL — fromMemberId, toMemberId, amount
 handovers/{kuriId}/teams/{team}  four separate handovers per round
 settlements/{id}                 exit reconciliation, tracked to completion
-credits/{id}                     overpayment carried against a future round
 auditLog/{id}                    every change to a closed round
 publicRounds/{kuriId}            world-readable projection
 ```
 
 **The round document carries no due amount.** That's the main structural
-departure from the spreadsheet, and it's forced: the amount depends on the pair,
-so there is no single number to store.
+departure from the spreadsheet, and it's forced: the amount depends on the
+pair, so there is no single number to store.
 
-`roundDues` stores the **basis** alongside every figure — `mirrors_earlier_receipt`,
-`standing_amount`, `round_override`, `exempt_groom`, `opted_out`. Storing the
-reason means the app can always explain why someone owes ₹7,000 rather than
-₹3,500, which is exactly the thing that causes arguments in a real group.
-Mirrored figures are locked and cannot be edited.
+`roundDues` stores the **basis** alongside every figure —
+`mirrors_earlier_receipt`, `standing_amount`, `round_override`, `exempt_groom`,
+`opted_out`. Storing the reason means the app can always explain why someone
+owes ₹7,000 rather than ₹3,500, which is exactly the thing that causes
+arguments in a real group. Mirrored figures are locked and cannot be edited.
 
 ---
 
-## Deploying
+## Code layout
 
-Push to `main` → the GitHub Action builds and deploys to Firebase Hosting. Open
-a PR → a preview channel URL.
-
-**Rules are deliberately not deployed from CI.** A bad rules deploy can lock the
-whole group out or expose payment data, so it stays a deliberate manual step:
-
-```bash
-firebase deploy --only firestore:rules,storage
 ```
+index.html          the only page
+config.js           the only file you edit
+firestore.rules     paste into the Firebase console
+css/styles.css      tokens + everything
+js/
+  app.js            boot: auth state decides what's on screen; routing
+  domain/           the rules. No Firebase import. Testable with node --test
+  lib/
+    firebase.js     CDN imports + offline persistence
+    auth.js         Google sign-in, roster matching
+    data.js         three live listeners; everything else is derived
+    crud.js         every write, and the two invariants they must keep
+    ui.js           el() and the component vocabulary
+    router.js       hash routing
+    shell.js        sidebar / bottom nav
+  pages/            one file per screen
+```
+
+Rendering is `el()` building real DOM nodes — no virtual DOM, no template
+strings. Text always goes in as a text node, so a member's name can never be
+parsed as markup.
 
 ---
 
 ## Build status
 
-**Phase 1 is implemented** — auth, members, rounds, per-pair dues generation
-with the reason shown, payment recording, dashboard, reports, CSV export.
+**Working:** setup, Google sign-in, members, rounds with per-pair dues and the
+reason shown for every figure, one-off and standing amount changes, per-round
+opt-outs, payment recording and corrections with an audit trail, the dashboard,
+reports with CSV export, the pairwise view, per-team handover, settlement with
+exit gating, and the public page.
 
-Also in place from later phases, because the data model supported them from day
-one: per-round opt-out, the over-₹7,000 confirmation, the pairwise *who owes
-whom* view, coordinator role and handover, audit log, and the settlement
-worksheet with exit gating.
+**Not built yet:** the `pendingRecalculations` review flow (a retroactive edit
+currently records its audit entry and warns you about the downstream effect,
+but does not yet produce a reviewable list of dues to apply or reset), credits
+from overpayment applied automatically against a future round, photo upload
+(paste an image URL instead — Firebase Storage now needs the paid plan), the
+closing final report, and the WhatsApp reminder generator.
 
-**Not yet built:** Cloud Functions to maintain `kuriRoundSummaries`,
-`memberTotals` and the `publicRounds` projection — the app currently computes
-dues client-side from source data, which works on the Spark (free) plan and
-keeps the screen from ever drifting out of step with the ledger. Publishing to
-`publicRounds` is an admin write for now. Also outstanding: photo upload with
-client-side resize, the `pendingRecalculations` review flow for retroactive
-edits, credits applied automatically against future dues, and the WhatsApp
-reminder generator.
+The public projection is refreshed by an admin pressing **Publish to public
+page** rather than by a Cloud Function, which keeps the whole app on the free
+Spark plan.
