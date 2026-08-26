@@ -21,11 +21,13 @@ export function renderReports(host) {
           Stat({
             label: "Rounds completed",
             amount: rounds.filter((r) => r.status === "completed").length,
+            count: true,
           }),
           Stat({
             label: "Members still to receive",
             amount: members.filter((m) => !m.hasBeenGroom && m.status === "active").length,
             tone: "muted",
+            count: true,
           }),
         ),
         el(

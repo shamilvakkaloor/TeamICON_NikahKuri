@@ -6,7 +6,7 @@
  * can never be parsed as markup.
  */
 
-import { money } from "./format.js";
+import { money, num } from "./format.js";
 import { icon } from "./icons.js";
 import { photoSrc } from "./photo.js";
 
@@ -83,11 +83,17 @@ export function Card({ title, action, body, tight, padded = true } = {}) {
   return card;
 }
 
-export function Stat({ label, amount, note, tone }) {
+/**
+ * A headline figure. `count: true` for things that are not money — a rupee
+ * sign in front of "31 members still to receive" is simply wrong.
+ */
+export function Stat({ label, amount, note, tone, count = false }) {
   return el(
     "section.card.stat",
     el("div.stat-label", label),
-    Money(amount, { size: "lg", tone }),
+    count
+      ? el(`span.money.lg${tone ? `.${tone}` : ""}`, num(amount))
+      : Money(amount, { size: "lg", tone }),
     note ? el("div.stat-note", note) : null,
   );
 }
