@@ -18,6 +18,7 @@ import { fmtDate } from "../lib/format.js";
 import { data, dataStore, memberById, nextKuriNumber } from "../lib/data.js";
 import { createRound } from "../lib/crud.js";
 import { isAdmin } from "../lib/auth.js";
+import { openRoundsImport } from "../components/import-rounds.js";
 
 const STATUS_TONE = { completed: "paid", active: "pending", upcoming: "" };
 
@@ -37,15 +38,24 @@ export function renderRounds(host) {
           ? el(
               "div.row.between.wrap",
               el("span.small.muted", `${completed} of ${members.length} members have had their round`),
-              (() => {
-                const b = Button("Open a round", {
-                  onClick: () => openCreateDialog(),
-                  disabled: hasOpen,
-                  title: hasOpen ? "Close the open round first" : "",
-                });
-                b.prepend(icon("plus", 16));
-                return b;
-              })(),
+              el(
+                "div.row.wrap",
+                { style: { gap: "var(--s2)" } },
+                Button("Import past rounds", {
+                  variant: "outline",
+                  size: "sm",
+                  onClick: () => openRoundsImport({ onImported: draw }),
+                }),
+                (() => {
+                  const b = Button("Open a round", {
+                    onClick: () => openCreateDialog(),
+                    disabled: hasOpen,
+                    title: hasOpen ? "Close the open round first" : "",
+                  });
+                  b.prepend(icon("plus", 16));
+                  return b;
+                })(),
+              ),
             )
           : null,
         hasOpen && isAdmin()

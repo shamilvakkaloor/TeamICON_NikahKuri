@@ -79,7 +79,7 @@ so the obligation is visible at the moment it is created.
 | **Rounds** | Open a round, review the generated dues *with the reason for each figure*, close it |
 | **Payments** | Record money as it comes in. Partial payments accumulate. Corrections leave a trail |
 | **Mine** | Your own history and upcoming dues, with the basis shown for every row |
-| **Members** | The directory. Admin adds people and hands over roles |
+| **Members** | The directory. Admin adds people and hands over roles. CSV import and export |
 | **Reports** | By round, by team, by member. CSV export |
 | **Who owes whom** | The pairwise view the spreadsheet never had |
 | **Handover** | Four separate per-team handovers to the groom, not one pooled payment |
@@ -178,6 +178,22 @@ pair, so there is no single number to store.
 `opted_out`. Storing the reason means the app can always explain why someone
 owes ₹7,000 rather than ₹3,500, which is exactly the thing that causes
 arguments in a real group. Mirrored figures are locked and cannot be edited.
+
+---
+
+## Importing an existing kuri
+
+A kuri that has already run for a few rounds is brought across in three steps,
+in this order: **members → past rounds → the JOURNAL**. Each depends on the one
+before. Full column lists in [SETUP.md](SETUP.md).
+
+The payment import takes no "paid to" column. Who the money went to is derived
+from the round's own groom, because the sheet never records it — it is implied
+by which column a row sits in — and asking for it again would only be a chance
+to attach a payment to the wrong person.
+
+Nothing is written until a row-by-row preview has been shown, and re-running an
+import is safe: rows matching something already recorded are skipped.
 
 ---
 

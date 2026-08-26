@@ -21,6 +21,7 @@ import { activeRound, data, dataStore, memberById } from "../lib/data.js";
 import { buildRoundLedger, loadRoundContext } from "../lib/roundLedger.js";
 import { currentMember, isAdmin, isCoordinator } from "../lib/auth.js";
 import { editPayment, recordPayment } from "../lib/crud.js";
+import { openPaymentsImport } from "../components/import-payments.js";
 
 export function renderPayments(host) {
   const state = { search: "", roundFilter: activeRound()?.id || "all" };
@@ -66,15 +67,26 @@ export function renderPayments(host) {
           "div.row.wrap.between",
           searchInput,
           canWrite
-            ? (() => {
-                const b = Button("Record payment", {
-                  onClick: () => openRecordDialog(),
-                  disabled: !round,
-                  title: round ? "" : "No round is open",
-                });
-                b.prepend(icon("plus", 16));
-                return b;
-              })()
+            ? el(
+                "div.row.wrap",
+                { style: { gap: "var(--s2)" } },
+                isAdmin()
+                  ? Button("Import history", {
+                      variant: "outline",
+                      size: "sm",
+                      onClick: () => openPaymentsImport({ onImported: draw }),
+                    })
+                  : null,
+                (() => {
+                  const b = Button("Record payment", {
+                    onClick: () => openRecordDialog(),
+                    disabled: !round,
+                    title: round ? "" : "No round is open",
+                  });
+                  b.prepend(icon("plus", 16));
+                  return b;
+                })(),
+              )
             : null,
         ),
         el(

@@ -164,11 +164,53 @@ was there from the start is `1`.
 
 ### Bringing across history from the sheet
 
-If you are importing past rounds, the one thing that matters is that **every
-historical payment records who the groom was**. The sheet leaves the groom
-implied by which column the row sits in; here it is a field on the payment, and
-the entire repayment rule depends on it. Also tick `hasBeenGroom` for everyone
-who has already had their round.
+If the kuri has already run for a few rounds, import it in this order. Each
+step depends on the one before it.
+
+**1. Members** — Members → Import CSV.
+
+**2. Past rounds** — Rounds → Import past rounds.
+
+| Column | |
+|---|---|
+| `Kuri number` | 1, 2, 3… |
+| `Groom email` | must already be on the member list |
+| `Nikah date` | `2024-03-15` or `15/03/2024` (day first) |
+| `Kuri last date` | optional; defaults to the nikah date |
+| `Status` | defaults to `completed` |
+
+A completed round marks its groom as having had his turn. From then on he
+repays rather than contributes, and is never offered as groom again.
+
+**3. The JOURNAL** — Payments → Import history.
+
+| Column | |
+|---|---|
+| `Kuri number` | must match a round you just imported |
+| `Email` | who paid |
+| `Amount` | one row per payment — instalments get a row each |
+| `Date` | optional; defaults to the round's nikah date |
+| `Note` | optional |
+
+**Notice there is no "paid to" column.** Who the money went to is taken from
+the round's own groom rather than read from the file. The sheet never records
+it — it is implied by which column a row sits in — and asking for it again
+would just be a chance to attach a payment to the wrong person. The entire
+repayment rule hangs off that field, so the app derives it instead.
+
+Every import shows you a preview first. Two things are worth actually reading
+in it:
+
+- **The parsed dates.** `03/04/2024` is read as 3 April. If your sheet meant 4
+  March, the preview is the only place you will catch it.
+- **The amounts.** Repayment mirrors what was *actually* received. If someone
+  paid ₹5,000 rather than ₹7,000 into a past round, enter ₹5,000 — the ledger
+  then correctly owes him ₹5,000 back, and correcting it later means editing a
+  payment and re-checking everyone it touches.
+
+Re-running an import is safe. Rows matching something already recorded are
+marked *already added* and skipped, so a part-finished import can just be run
+again.
 
 ---
 

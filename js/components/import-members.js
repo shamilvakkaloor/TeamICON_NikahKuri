@@ -1,15 +1,13 @@
 /**
  * Bulk member import.
  *
- * Nothing is written until the admin has seen a row-by-row preview. That is
- * not politeness: `joinedAtKuriNumber` cannot be changed once a member is
- * saved — it is what makes a late joiner correctly collect from fewer people —
- * so a silent import of 33 rows with a wrong column would be genuinely hard to
- * unpick.
+ * `joinedAtKuriNumber` cannot be changed once a member is saved — it is what
+ * makes a late joiner correctly collect from fewer people — so the shared
+ * preview matters more here than anywhere else.
  */
 
-import { el, Badge, Button, Notice, openDialog, toast } from "../lib/ui.js";
-import { downloadCsv, parseCsv } from "../lib/csv.js";
+import { el, Notice } from "../lib/ui.js";
+import { openCsvImport, makeCounts } from "./csv-import.js";
 import { data } from "../lib/data.js";
 import { createMember, setContact } from "../lib/crud.js";
 import { DEFAULT_AMOUNT, TEAMS } from "../domain/ledger.js";
@@ -27,7 +25,7 @@ const ROLE_WORDS = {
   coord: "coordinator",
 };
 
-const TEMPLATE_HEADERS = [
+const HEADERS = [
   "Name",
   "Team",
   "Email",
@@ -38,17 +36,8 @@ const TEMPLATE_HEADERS = [
   "Photo URL",
 ];
 
-const TEMPLATE_ROWS = [
-  [
-    "Shamil Vakkaloor",
-    "MALAPPURAM",
-    "shamil@gmail.com",
-    "9876543210",
-    "1",
-    "7000",
-    "Member",
-    "",
-  ],
+const TEMPLATE = [
+  ["Shamil Vakkaloor", "MALAPPURAM", "shamil@gmail.com", "9876543210", "1", "7000", "Member", ""],
   [
     "Anas Rahman",
     "KODUVALLY",
@@ -62,181 +51,13 @@ const TEMPLATE_ROWS = [
 ];
 
 export function openImportDialog({ onImported }) {
-  const state = { parsed: null, busy: false };
-
-  const fileInput = el("input", {
-    type: "file",
-    accept: ".csv,text/csv",
-    onchange: (e) => {
-      const file = e.target.files?.[0];
-      if (file) readFile(file);
-    },
-  });
-
-  const previewHost = el("div");
-  const footerHost = el("div.row", { style: { gap: "var(--s2)" } });
-
-  function readFile(file) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        state.parsed = validate(parseCsv(String(reader.result)));
-      } catch (err) {
-        state.parsed = { fatal: err.message };
-      }
-      drawPreview();
-    };
-    reader.onerror = () => {
-      state.parsed = { fatal: "That file could not be read." };
-      drawPreview();
-    };
-    reader.readAsText(file);
-  }
-
-  function drawPreview() {
-    previewHost.replaceChildren();
-    footerHost.replaceChildren(Button("Cancel", { variant: "outline", onClick: () => close() }));
-
-    const p = state.parsed;
-    if (!p) return;
-
-    if (p.fatal) {
-      previewHost.append(Notice(p.fatal, "danger"));
-      return;
-    }
-
-    const importable = p.rows.filter((r) => r.status === "new");
-
-    previewHost.append(
-      el(
-        "div.stack",
-        el(
-          "div.row.wrap",
-          { style: { gap: "var(--s2)" } },
-          Badge(`${importable.length} to import`, importable.length ? "paid" : ""),
-          p.counts.duplicate ? Badge(`${p.counts.duplicate} already on the roster`, "pending") : null,
-          p.counts.error ? Badge(`${p.counts.error} with problems`, "owed") : null,
-        ),
-        p.counts.error
-          ? Notice("Rows with problems are skipped. Fix them in the file and import again.", "warn")
-          : null,
-        el(
-          "div.table-scroll",
-          el(
-            "table.data",
-            el(
-              "thead",
-              // Status leads. It is the reason this preview exists, and in a
-              // narrow dialog a trailing column scrolls out of sight exactly
-              // when it matters most.
-              el(
-                "tr",
-                el("th", "Status"),
-                el("th", "Name"),
-                el("th", "Team"),
-                el("th", "Email"),
-                el("th.num", "Joined"),
-                el("th.num", "Amount"),
-                el("th", "Role"),
-                el("th", "Photo"),
-              ),
-            ),
-            el(
-              "tbody",
-              p.rows.map((r) =>
-                el(
-                  `tr${r.status === "new" ? "" : ".dim-row"}`,
-                  el(
-                    "td",
-                    r.status === "new"
-                      ? Badge("new", "paid")
-                      : r.status === "duplicate"
-                        ? Badge("already added", "pending")
-                        : Badge(r.reason, "owed"),
-                  ),
-                  el("td", r.value.name || "—"),
-                  el("td.xs", r.value.team || "—"),
-                  el("td.xs.muted.truncate", r.value.email || "—"),
-                  el("td.num", String(r.value.joinedAtKuriNumber ?? "—")),
-                  el("td.num", String(r.value.standingAmount ?? "—")),
-                  el("td.xs", r.value.role || "—"),
-                  el("td.xs.muted", r.value.photoUrl ? "yes" : "—"),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-
-    footerHost.replaceChildren(
-      Button("Cancel", { variant: "outline", onClick: () => close() }),
-      Button(`Import ${importable.length} member${importable.length === 1 ? "" : "s"}`, {
-        disabled: importable.length === 0 || state.busy,
-        onClick: () => runImport(importable),
-      }),
-    );
-  }
-
-  async function runImport(rows) {
-    state.busy = true;
-    drawPreview();
-
-    const progress = el("div.small.muted");
-    previewHost.replaceChildren(el("div.stack", progress));
-
-    let done = 0;
-    const failures = [];
-
-    // Sequential rather than parallel: each member is two writes (the record
-    // and its memberIndex entry), and a partial failure needs to name the row
-    // it happened on.
-    for (const row of rows) {
-      progress.textContent = `Importing ${done + 1} of ${rows.length}…`;
-      try {
-        const { mobile, ...member } = row.value;
-        const docRef = await createMember(member);
-        if (mobile) await setContact(docRef.id, mobile);
-        done++;
-      } catch (e) {
-        failures.push(`${row.value.name}: ${e?.message || "failed"}`);
-      }
-    }
-
-    if (failures.length === 0) {
-      toast(`${done} members imported.`, "success");
-      close();
-      onImported();
-      return;
-    }
-
-    state.busy = false;
-    previewHost.replaceChildren(
-      el(
-        "div.stack",
-        Notice(
-          `${done} imported, ${failures.length} failed. The ones that failed were not saved — ` +
-            "fix them and import those rows again.",
-          "warn",
-        ),
-        el("ul.small", failures.map((f) => el("li", f))),
-      ),
-    );
-    footerHost.replaceChildren(
-      Button("Done", {
-        onClick: () => {
-          close();
-          onImported();
-        },
-      }),
-    );
-  }
-
-  const close = openDialog({
+  openCsvImport({
     title: "Import members from CSV",
-    wide: true,
-    body: el(
-      "div.stack",
+    templateName: "nikah-kuri-members-template.csv",
+    templateHeaders: HEADERS,
+    templateRows: TEMPLATE,
+    noun: (n) => `${n} member${n === 1 ? "" : "s"}`,
+    help: [
       Notice(
         "Required columns: Name, Team, Email. Optional: Mobile, Joined at Kuri, Standing amount, " +
           "Role, Photo URL. Column order does not matter and the header spelling is forgiving.",
@@ -265,29 +86,28 @@ export function openImportDialog({ onImported }) {
         "p.small.muted",
         el("strong", "Photo URL"),
         " is a direct link to an image — the groom’s photo is the centrepiece of the home page. " +
-          "Leave it blank and initials are shown instead; you can always add it later.",
+          "Leave it blank and initials are shown instead.",
       ),
-      el(
-        "div.row.wrap",
-        Button("Download template", {
-          variant: "outline",
-          size: "sm",
-          onClick: () => downloadCsv("nikah-kuri-members-template.csv", TEMPLATE_HEADERS, TEMPLATE_ROWS),
-        }),
-      ),
-      el("div.field", el("label", "Choose a CSV file"), fileInput),
-      previewHost,
-    ),
-    footer: footerHost,
+    ],
+    columns: [
+      { label: "Name", get: (v) => v.name },
+      { label: "Team", get: (v) => v.team, small: true },
+      { label: "Email", get: (v) => v.email, truncate: true },
+      { label: "Joined", get: (v) => v.joinedAtKuriNumber, num: true },
+      { label: "Amount", get: (v) => v.standingAmount, num: true },
+      { label: "Role", get: (v) => v.role, small: true },
+      { label: "Photo", get: (v) => (v.photoUrl ? "yes" : "—"), small: true },
+    ],
+    validate,
+    write: async (value) => {
+      const { mobile, ...member } = value;
+      const docRef = await createMember(member);
+      if (mobile) await setContact(docRef.id, mobile);
+    },
+    onDone: onImported,
   });
-
-  drawPreview();
 }
 
-/**
- * Turn parsed rows into candidate members, marking each one importable,
- * already-present, or broken. Nothing here writes.
- */
 function validate({ headers, rows }) {
   if (rows.length === 0) throw new Error("That file has no rows under the header line.");
 
@@ -301,16 +121,16 @@ function validate({ headers, rows }) {
 
   const existingEmails = new Set(data().members.map((m) => m.email));
   const seen = new Set();
-  const counts = { new: 0, duplicate: 0, error: 0 };
+  const counts = makeCounts();
 
   const out = rows.map((raw) => {
     const name = (raw.name || "").trim();
     const team = (raw.team || "").trim().toUpperCase();
     const email = (raw.email || "").trim().toLowerCase();
+
     const roleRaw = (raw.role || "member").trim().toLowerCase();
-    // People write "Team coordinator", "Co-ordinator", "TEAM COORDINATOR".
-    // Strip everything but letters and accept any of them, so a roster does
-    // not get rejected over a wording choice.
+    // People write "Team coordinator", "Co-ordinator", "MEMBER". Strip
+    // everything but letters so a roster is never rejected over wording.
     const roleKey = roleRaw.replace(/[^a-z]/g, "");
     const role = ROLE_WORDS[roleKey];
 
@@ -318,7 +138,8 @@ function validate({ headers, rows }) {
     const amountRaw = raw.standingamount ?? raw.amount ?? raw.standing ?? "";
 
     const joinedAtKuriNumber = joinedRaw === "" ? 1 : Number(joinedRaw);
-    const standingAmount = amountRaw === "" ? DEFAULT_AMOUNT : Number(amountRaw);
+    const standingAmount =
+      amountRaw === "" ? DEFAULT_AMOUNT : Number(String(amountRaw).replace(/[₹,\s]/g, ""));
 
     const value = {
       name,
@@ -336,7 +157,7 @@ function validate({ headers, rows }) {
 
     const fail = (reason) => {
       counts.error++;
-      return { value, status: "error", reason };
+      return { value, label: name || email, status: "error", reason };
     };
 
     if (!name) return fail("no name");
@@ -354,11 +175,11 @@ function validate({ headers, rows }) {
 
     if (existingEmails.has(email)) {
       counts.duplicate++;
-      return { value, status: "duplicate" };
+      return { value, label: name, status: "duplicate" };
     }
 
     counts.new++;
-    return { value, status: "new" };
+    return { value, label: name, status: "new" };
   });
 
   return { rows: out, counts };
