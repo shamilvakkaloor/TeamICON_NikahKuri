@@ -264,10 +264,28 @@ one of you is repaying an earlier receipt and the other is paying a standard
 amount.
 
 **Someone is leaving the scheme.**
-Settlement (admin only). The app works out every pairwise obligation. A member
-who has already had his round must repay everyone before he can go — the exit
-stays blocked until every line is marked settled. A member who never had his
-round is refunded in full.
+Members → Edit that person → **Leave the kuri…**, which opens Settlement with
+them already selected. (Settlement is also in the menu on its own.)
+
+Leaving is not a delete. The app works out every pairwise obligation: a member
+who has already had his round must repay everyone before he can go, and the
+exit stays blocked until every line is marked settled. A member who never had
+his round is refunded in full. Nothing about his history disappears either way.
+
+**A photo shows as initials instead of the picture.**
+The link has to point at the image itself, not at a page showing it. Google
+Drive links are converted automatically, but only work if the file is shared
+**Anyone with the link → Viewer** — otherwise the app quietly falls back to
+initials rather than showing a broken image.
+
+Google Photos share links cannot be used at all. Put the file in Drive instead.
+
+**The mobile numbers look like 9.19895E+11.**
+Excel did that on export, and the missing digits are not recoverable from what
+it wrote — the app now refuses such rows rather than storing a number that
+cannot ring anyone. To fix a batch that already went in: format the Mobile
+column as **Text** in Excel, export again, then Members → Import CSV and tick
+**Update members who are already added**.
 
 **Someone forgot which Google account they used.**
 Members → Edit → change the email to the one they actually use. The app

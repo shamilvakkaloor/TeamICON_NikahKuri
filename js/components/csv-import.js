@@ -38,8 +38,12 @@ export function openCsvImport({
   write,
   noun,
   onDone,
+  options = {},
+  optionsUI = null,
 }) {
-  const state = { parsed: null, busy: false };
+  // The raw text is kept so toggling an option re-judges the same file rather
+  // than making someone pick it again.
+  const state = { parsed: null, busy: false, text: null };
 
   const fileInput = el("input", {
     type: "file",
@@ -53,15 +57,21 @@ export function openCsvImport({
   const previewHost = el("div");
   const footerHost = el("div.row", { style: { gap: "var(--s2)" } });
 
+  function revalidate() {
+    if (state.text === null) return;
+    try {
+      state.parsed = validate(parseCsv(state.text), options);
+    } catch (err) {
+      state.parsed = { fatal: err.message };
+    }
+    draw();
+  }
+
   function readFile(file) {
     const reader = new FileReader();
     reader.onload = () => {
-      try {
-        state.parsed = validate(parseCsv(String(reader.result)));
-      } catch (err) {
-        state.parsed = { fatal: err.message };
-      }
-      draw();
+      state.text = String(reader.result);
+      revalidate();
     };
     reader.onerror = () => {
       state.parsed = { fatal: "That file could not be read." };
@@ -120,7 +130,7 @@ export function openCsvImport({
                   el(
                     "td",
                     r.status === "new"
-                      ? Badge("new", "paid")
+                      ? Badge(r.reason || "new", r.reason ? "info" : "paid")
                       : r.status === "duplicate"
                         ? Badge(r.reason || "already added", "pending")
                         : Badge(r.reason, "owed"),
@@ -214,6 +224,7 @@ export function openCsvImport({
         }),
       ),
       el("div.field", el("label", "Choose a CSV file"), fileInput),
+      optionsUI ? optionsUI(options, revalidate) : null,
       previewHost,
     ),
     footer: footerHost,

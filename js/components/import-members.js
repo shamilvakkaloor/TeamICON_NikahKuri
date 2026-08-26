@@ -6,10 +6,10 @@
  * preview matters more here than anywhere else.
  */
 
-import { el, Notice } from "../lib/ui.js";
+import { Checkbox, el, Notice } from "../lib/ui.js";
 import { openCsvImport, makeCounts } from "./csv-import.js";
 import { data } from "../lib/data.js";
-import { createMember, setContact } from "../lib/crud.js";
+import { createMember, setContact, updateMember } from "../lib/crud.js";
 import { DEFAULT_AMOUNT, TEAMS } from "../domain/ledger.js";
 
 /** Accepted spellings for the role column, keyed on letters only. */
@@ -53,6 +53,15 @@ const TEMPLATE = [
 export function openImportDialog({ onImported }) {
   openCsvImport({
     title: "Import members from CSV",
+    options: { updateExisting: false },
+    optionsUI: (options, revalidate) =>
+      Checkbox("Update members who are already added", {
+        checked: options.updateExisting,
+        onChange: (v) => {
+          options.updateExisting = v;
+          revalidate();
+        },
+      }),
     templateName: "nikah-kuri-members-template.csv",
     templateHeaders: HEADERS,
     templateRows: TEMPLATE,
@@ -85,8 +94,25 @@ export function openImportDialog({ onImported }) {
       el(
         "p.small.muted",
         el("strong", "Photo URL"),
-        " is a direct link to an image — the groom’s photo is the centrepiece of the home page. " +
-          "Leave it blank and initials are shown instead.",
+        " is a link to an image — the groom’s photo is the centrepiece of the home page. Google " +
+          "Drive links work if the file is shared as “Anyone with the link”. Leave it blank and " +
+          "initials are shown instead.",
+      ),
+      el(
+        "p.small.muted",
+        el("strong", "Before exporting from Excel"),
+        ", format the Mobile column as ",
+        el("strong", "Text"),
+        ". Left as a number, Excel writes 919895443406 out as 9.19895E+11 and the last digits are " +
+          "gone for good. Rows like that are refused rather than imported.",
+      ),
+      el(
+        "p.small.muted",
+        "Ticking ",
+        el("strong", "Update members who are already added"),
+        " lets you correct a bad import: it refreshes name, mobile, photo and standing amount for " +
+          "anyone already on the list, matched on email. Team, role and joining round are left " +
+          "alone — those carry ledger meaning, so change them one at a time.",
       ),
     ],
     columns: [
@@ -100,7 +126,25 @@ export function openImportDialog({ onImported }) {
     ],
     validate,
     write: async (value) => {
-      const { mobile, ...member } = value;
+      const { mobile, existingId, ...member } = value;
+
+      if (existingId) {
+        // Only the fields that carry no ledger meaning. Team, role and the
+        // joining round are deliberately not touched by a bulk update.
+        const existing = data().members.find((m) => m.id === existingId);
+        await updateMember(
+          existingId,
+          {
+            name: member.name,
+            photoUrl: member.photoUrl,
+            standingAmount: member.standingAmount,
+          },
+          existing,
+        );
+        await setContact(existingId, mobile);
+        return;
+      }
+
       const docRef = await createMember(member);
       if (mobile) await setContact(docRef.id, mobile);
     },
@@ -108,7 +152,7 @@ export function openImportDialog({ onImported }) {
   });
 }
 
-function validate({ headers, rows }) {
+function validate({ headers, rows }, options = {}) {
   if (rows.length === 0) throw new Error("That file has no rows under the header line.");
 
   const required = ["name", "team", "email"];
@@ -119,7 +163,7 @@ function validate({ headers, rows }) {
     );
   }
 
-  const existingEmails = new Set(data().members.map((m) => m.email));
+  const existingByEmail = new Map(data().members.map((m) => [m.email, m]));
   const seen = new Set();
   const counts = makeCounts();
 
@@ -141,11 +185,13 @@ function validate({ headers, rows }) {
     const standingAmount =
       amountRaw === "" ? DEFAULT_AMOUNT : Number(String(amountRaw).replace(/[₹,\s]/g, ""));
 
+    const mobile = (raw.mobile ?? raw.phone ?? "").trim();
+
     const value = {
       name,
       team,
       email,
-      mobile: (raw.mobile ?? raw.phone ?? "").trim(),
+      mobile,
       role: role || "member",
       photoUrl: (raw.photourl ?? raw.photo ?? raw.photolink ?? raw.image ?? "").trim(),
       joinedAtKuriNumber,
@@ -170,12 +216,30 @@ function validate({ headers, rows }) {
     }
     if (!Number.isFinite(standingAmount) || standingAmount < 0) return fail("amount is not a number");
 
+    // Excel silently turns a 12-digit mobile into 9.19895E+11 on export, and
+    // the missing digits cannot be recovered from what it wrote. Refusing the
+    // row is the only honest option — importing it would store a number that
+    // looks plausible and cannot ring anyone.
+    if (/\d[eE][+-]?\d/.test(mobile)) {
+      return fail("Excel wrote this mobile as 9.2E+11 — format the Mobile column as Text");
+    }
+
     if (seen.has(email)) return fail("this email appears twice in the file");
     seen.add(email);
 
-    if (existingEmails.has(email)) {
-      counts.duplicate++;
-      return { value, label: name, status: "duplicate" };
+    const existing = existingByEmail.get(email);
+    if (existing) {
+      if (!options.updateExisting) {
+        counts.duplicate++;
+        return { value, label: name, status: "duplicate" };
+      }
+      counts.new++;
+      return {
+        value: { ...value, existingId: existing.id },
+        label: name,
+        status: "new",
+        reason: "update",
+      };
     }
 
     counts.new++;

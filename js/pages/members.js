@@ -386,6 +386,7 @@ function openMemberDialog({ member, mobile = "", onSaved }) {
         }),
         Field({
           label: "Standing amount",
+          hint: "What he gives in future rounds. To change one round only, open that round.",
           control: MoneyInput({
             value: state.standing,
             oninput: (e) => {
@@ -397,6 +398,18 @@ function openMemberDialog({ member, mobile = "", onSaved }) {
       adminWarningHost,
     ),
     footer: [
+      // Leaving is not a delete — a member who has taken his round owes money
+      // back, so it runs through settlement rather than removing a record.
+      member && member.status !== "exited"
+        ? Button("Leave the kuri…", {
+            variant: "ghost",
+            onClick: () => {
+              close();
+              window.location.hash = `#/settlement/${member.id}`;
+            },
+          })
+        : null,
+      el("div", { style: { flex: "1" } }),
       Button("Cancel", { variant: "outline", onClick: () => close() }),
       Button("Save", { onClick: submit }),
     ],

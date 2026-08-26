@@ -8,6 +8,7 @@
 
 import { money } from "./format.js";
 import { icon } from "./icons.js";
+import { photoSrc } from "./photo.js";
 
 /**
  * el("div.card", { onclick }, child, child, …)
@@ -126,11 +127,16 @@ export function Skeleton(rows = 3) {
   );
 }
 
+/**
+ * Initials, replaced by the photo only once it has actually loaded.
+ *
+ * The image is probed detached and swapped in on success, so a dead link —
+ * an unshared Drive file, a moved image, no connection — leaves the initials
+ * standing rather than the browser's broken-image icon.
+ */
 export function Avatar(name, photoUrl, large = false) {
-  const cls = `avatar${large ? ".lg" : ""}`;
-  if (photoUrl) return el(`img.${cls.replace("avatar", "avatar")}`, { src: photoUrl, alt: "" });
-  return el(
-    `span.${cls}`,
+  const node = el(
+    `span.avatar${large ? ".lg" : ""}`,
     { "aria-hidden": "true" },
     (name || "?")
       .split(/\s+/)
@@ -139,6 +145,18 @@ export function Avatar(name, photoUrl, large = false) {
       .map((p) => p[0].toUpperCase())
       .join(""),
   );
+
+  const src = photoSrc(photoUrl);
+  if (src) {
+    const probe = new Image();
+    probe.onload = () => {
+      clear(node);
+      node.append(el("img", { src, alt: "", loading: "lazy" }));
+    };
+    probe.src = src;
+  }
+
+  return node;
 }
 
 export function TeamDot(team) {

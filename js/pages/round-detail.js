@@ -69,6 +69,17 @@ export function renderRoundDetail(host, { kuriId }) {
       el(
         "div.stack",
         headerCard({ round, groom, expected, collected }),
+        // Amounts are set on a round while it is open. Say so on a closed one
+        // rather than leaving an admin hunting for a button that is not there.
+        admin && !open
+          ? Notice(
+              "This round is closed, so amounts can no longer be set on it. To correct what " +
+                "somebody actually paid, edit the payment on the Payments screen — that keeps the " +
+                "audit trail. To change what a member gives in future rounds, set his standing " +
+                "amount on the Members screen.",
+              "info",
+            )
+          : null,
         suppressed.length > 0
           ? Notice(
               `${suppressed.length} member${suppressed.length > 1 ? "s have" : " has"} a one-off amount set for this round that overrides their standing amount. ` +

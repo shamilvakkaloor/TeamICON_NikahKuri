@@ -793,6 +793,15 @@ a.ledger-row.plain:hover {
   font-size: var(--text-2xl);
 }
 
+/* The photo is swapped in over the initials only once it has loaded. */
+.avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
 .team-dot {
   width: 8px;
   height: 8px;

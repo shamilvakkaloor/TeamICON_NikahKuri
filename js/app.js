@@ -39,6 +39,7 @@ route("/reports", renderReports);
 route("/pairs", renderPairs);
 route("/handover", renderHandover);
 route("/settlement", renderSettlement);
+route("/settlement/:memberId", renderSettlement);
 route("/audit", renderAudit);
 
 let mountedStatus = null;

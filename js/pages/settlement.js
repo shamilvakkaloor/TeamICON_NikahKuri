@@ -29,7 +29,7 @@ import {
   writeSettlements,
 } from "../lib/crud.js";
 
-export function renderSettlement(host) {
+export function renderSettlement(host, params = {}) {
   if (!isAdmin()) {
     host.replaceChildren(EmptyState({ title: "Admin only", body: "Settlement is run by the admin." }));
     return () => {};
@@ -37,6 +37,9 @@ export function renderSettlement(host) {
 
   const state = { selectedId: "", existing: [] };
   const unsub = dataStore.subscribe(draw);
+
+  // Arriving from "Leave the kuri…" on a member preselects them.
+  if (params.memberId) select(params.memberId);
 
   async function select(memberId) {
     state.selectedId = memberId;

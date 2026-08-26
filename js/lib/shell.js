@@ -37,6 +37,18 @@ const TITLES = {
   "/audit": "Audit log",
 };
 
+/**
+ * Longest-prefix match, so /rounds/abc reads "Kuri rounds" rather than
+ * falling back to the app name.
+ */
+function titleFor(path) {
+  if (TITLES[path]) return TITLES[path];
+  const prefix = Object.keys(TITLES)
+    .filter((p) => p !== "/" && path.startsWith(`${p}/`))
+    .sort((a, b) => b.length - a.length)[0];
+  return prefix ? TITLES[prefix] : "Nikah Kuri";
+}
+
 const visible = (item) =>
   (!item.admin || isAdmin()) && (!item.coordinator || isCoordinator());
 
@@ -76,7 +88,7 @@ export function renderShell(app) {
 
   const topbar = el(
     "header.topbar",
-    el("h1", TITLES[currentPath()] || "Nikah Kuri"),
+    el("h1", titleFor(currentPath())),
     member ? el("span.badge", member.role) : null,
     member ? Avatar(member.name, member.photoUrl) : null,
     Button("Sign out", {
@@ -123,7 +135,7 @@ export function refreshShellChrome() {
   });
 
   const heading = shellRoot.querySelector(".topbar h1");
-  if (heading) heading.textContent = TITLES[path] || "Nikah Kuri";
+  if (heading) heading.textContent = titleFor(path);
 }
 
 export function contentHost() {
