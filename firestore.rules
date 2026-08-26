@@ -1,0 +1,206 @@
+rules_version = '2';
+
+// -----------------------------------------------------------------------------
+// Nikah Kuri — Firestore security rules
+//
+// The shape of the problem:
+//   * All payment data is open to every signed-in member (rule 12), so member
+//     reads are simple: authenticated + on the roster.
+//   * Only the admin writes, except that a coordinator may record payments for
+//     his own team.
+//   * The public sees nothing but the `publicRounds` projection. Because that
+//     projection is a separate collection containing no personal data, a
+//     mistake in these rules cannot leak payment records or mobile numbers —
+//     the world-readable path simply does not contain them.
+//
+// How the caller's role is resolved
+// ---------------------------------
+// Member documents are created by the admin, with auto-IDs, long before the
+// person first signs in — so the document ID is not the Firebase Auth uid and
+// rules cannot look a member up by uid. Rules also cannot run queries, so they
+// cannot search `members` by email either.
+//
+// The fix is `memberIndex/{email}`: a small admin-maintained document keyed by
+// the lowercased Google account email, holding just the role, team and status.
+// Rules `get()` it directly. The app keeps it in step whenever a member is
+// created or edited.
+//
+// Bootstrapping: the first admin's index document has to be created by hand in
+// the Firebase console, because no admin exists yet to write it. SETUP.md walks
+// through this.
+//
+// A bad rules deploy can lock the whole group out, so deploy these manually and
+// deliberately rather than from CI.
+// -----------------------------------------------------------------------------
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- caller identity -------------------------------------------------
+
+    function indexPath() {
+      return /databases/$(database)/documents/memberIndex/$(request.auth.token.email.lower());
+    }
+
+    function onRoster() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && exists(indexPath());
+    }
+
+    function me() {
+      return get(indexPath()).data;
+    }
+
+    function isMember() {
+      return onRoster() && me().status != 'exited';
+    }
+
+    function isAdmin() {
+      return onRoster() && me().role == 'admin';
+    }
+
+    function isCoordinator() {
+      return onRoster() && (me().role == 'coordinator' || me().role == 'admin');
+    }
+
+    function myTeam() {
+      return me().team;
+    }
+
+    // --- the role index --------------------------------------------------
+    // Readable by members so the app can show who holds which role; writable
+    // only by the admin, since it is what the rules themselves trust.
+
+    match /memberIndex/{email} {
+      allow read: if isMember();
+      allow write: if isAdmin();
+    }
+
+    // --- members ---------------------------------------------------------
+    // Names, teams, roles, standing amounts. No contact details live here.
+
+    match /members/{memberId} {
+      allow read: if isMember();
+      allow create, update: if isAdmin();
+      allow delete: if false;  // members exit through settlement, never deletion
+    }
+
+    // --- contact details -------------------------------------------------
+    // Mobile numbers are contact details, not payment data, and there is no
+    // reason for the whole group to be able to export them. Rules are
+    // document-level, so these cannot live on the member document.
+
+    match /memberContacts/{memberId} {
+      allow read, write: if isAdmin();
+    }
+
+    // --- rounds ----------------------------------------------------------
+
+    match /kuriRounds/{kuriId} {
+      allow read: if isMember();
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /roundDues/{kuriId}/members/{memberId} {
+      allow read: if isMember();
+      allow write: if isAdmin();
+    }
+
+    match /roundParticipation/{kuriId}/members/{memberId} {
+      allow read: if isMember();
+      // Opt-outs are recorded by the admin; members do not request them here.
+      allow write: if isAdmin();
+    }
+
+    match /roundOverrides/{kuriId}/members/{memberId} {
+      allow read: if isMember();
+      allow write: if isAdmin();
+    }
+
+    // --- payments --------------------------------------------------------
+    // The ledger. Editable, never deletable — a correction preserves the
+    // audit trail (rule 24).
+
+    match /payments/{paymentId} {
+      allow read: if isMember();
+
+      // A coordinator records money only for his own team; the admin records
+      // anything. New payments must not arrive pre-marked as edited.
+      allow create: if (isAdmin()
+                        || (isCoordinator() && request.resource.data.team == myTeam()))
+                    && request.resource.data.edited == false
+                    && request.resource.data.amount is number
+                    && request.resource.data.amount > 0
+                    && request.resource.data.toMemberId is string
+                    && request.resource.data.toMemberId != '';
+
+      // Edits are admin-only and must set the permanent marker, so it cannot
+      // be quietly skipped.
+      allow update: if isAdmin() && request.resource.data.edited == true;
+
+      allow delete: if false;
+    }
+
+    // --- handovers -------------------------------------------------------
+    // Each coordinator hands his own team's total to the groom separately.
+
+    match /handovers/{kuriId}/teams/{team} {
+      allow read: if isMember();
+      allow write: if isAdmin() || (isCoordinator() && team == myTeam());
+    }
+
+    // --- settlement, credits, recalculations -----------------------------
+
+    match /settlements/{settlementId} {
+      allow read: if isMember();
+      allow write: if isAdmin();
+    }
+
+    match /credits/{creditId} {
+      allow read: if isMember();
+      allow write: if isAdmin();
+    }
+
+    match /pendingRecalculations/{recalcId} {
+      allow read: if isMember();
+      allow write: if isAdmin();
+    }
+
+    // --- audit log -------------------------------------------------------
+    // Append-only, and visible to every member: the admin sometimes records
+    // payments into his own round, which is exactly why this exists.
+
+    match /auditLog/{entryId} {
+      allow read: if isMember();
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    // --- server-maintained projections -----------------------------------
+
+    match /kuriRoundSummaries/{kuriId} {
+      allow read: if isMember();
+      allow write: if false;
+    }
+
+    match /memberTotals/{memberId} {
+      allow read: if isMember();
+      allow write: if false;
+    }
+
+    // The only world-readable path in the database. Round number, groom name
+    // and photo, dates and team totals — nothing else.
+    match /publicRounds/{kuriId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // --- default deny ----------------------------------------------------
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
