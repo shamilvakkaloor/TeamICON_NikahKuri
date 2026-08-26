@@ -10,10 +10,10 @@
 // This is the only file you edit.
 
 export const firebaseConfig = {
-  apiKey: "PASTE_API_KEY",
-  authDomain: "PASTE_AUTH_DOMAIN",
-  projectId: "PASTE_PROJECT_ID",
-  storageBucket: "PASTE_STORAGE_BUCKET",
-  messagingSenderId: "PASTE_MESSAGING_SENDER_ID",
-  appId: "PASTE_APP_ID",
+  apiKey: "AIzaSyAQZ5h5kYGeH7A5PxBZnlFzIeRx49_8pC4",
+  authDomain: "teamicon-nikah-kuri.firebaseapp.com",
+  projectId: "teamicon-nikah-kuri",
+  storageBucket: "teamicon-nikah-kuri.firebasestorage.app",
+  messagingSenderId: "243619582601",
+  appId: "1:243619582601:web:11daf8f24ddf0c16e5ec58",
 };
