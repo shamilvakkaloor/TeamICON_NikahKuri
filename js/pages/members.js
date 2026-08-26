@@ -33,7 +33,7 @@ function exportRoster(contacts) {
   const { members } = data();
   downloadCsv(
     `nikah-kuri-members-${new Date().toISOString().slice(0, 10)}.csv`,
-    ["Name", "Team", "Email", "Mobile", "Joined at Kuri", "Standing amount", "Role"],
+    ["Name", "Team", "Email", "Mobile", "Joined at Kuri", "Standing amount", "Role", "Photo URL"],
     members.map((m) => [
       m.name,
       m.team,
@@ -42,6 +42,7 @@ function exportRoster(contacts) {
       m.joinedAtKuriNumber,
       m.standingAmount,
       m.role,
+      m.photoUrl || "",
     ]),
   );
 }

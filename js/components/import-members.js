@@ -14,6 +14,19 @@ import { data } from "../lib/data.js";
 import { createMember, setContact } from "../lib/crud.js";
 import { DEFAULT_AMOUNT, TEAMS } from "../domain/ledger.js";
 
+/** Accepted spellings for the role column, keyed on letters only. */
+const ROLE_WORDS = {
+  "": "member",
+  member: "member",
+  members: "member",
+  ordinary: "member",
+  coordinator: "coordinator",
+  coordinators: "coordinator",
+  teamcoordinator: "coordinator",
+  teamcoordinators: "coordinator",
+  coord: "coordinator",
+};
+
 const TEMPLATE_HEADERS = [
   "Name",
   "Team",
@@ -22,11 +35,30 @@ const TEMPLATE_HEADERS = [
   "Joined at Kuri",
   "Standing amount",
   "Role",
+  "Photo URL",
 ];
 
 const TEMPLATE_ROWS = [
-  ["Shamil Vakkaloor", "MALAPPURAM", "shamil@gmail.com", "9876543210", "1", "7000", "member"],
-  ["Anas Rahman", "KODUVALLY", "anas@gmail.com", "9876543211", "1", "7000", "coordinator"],
+  [
+    "Shamil Vakkaloor",
+    "MALAPPURAM",
+    "shamil@gmail.com",
+    "9876543210",
+    "1",
+    "7000",
+    "Member",
+    "",
+  ],
+  [
+    "Anas Rahman",
+    "KODUVALLY",
+    "anas@gmail.com",
+    "9876543211",
+    "1",
+    "7000",
+    "Team coordinator",
+    "https://example.com/anas.jpg",
+  ],
 ];
 
 export function openImportDialog({ onImported }) {
@@ -105,6 +137,8 @@ export function openImportDialog({ onImported }) {
                 el("th", "Email"),
                 el("th.num", "Joined"),
                 el("th.num", "Amount"),
+                el("th", "Role"),
+                el("th", "Photo"),
               ),
             ),
             el(
@@ -125,6 +159,8 @@ export function openImportDialog({ onImported }) {
                   el("td.xs.muted.truncate", r.value.email || "—"),
                   el("td.num", String(r.value.joinedAtKuriNumber ?? "—")),
                   el("td.num", String(r.value.standingAmount ?? "—")),
+                  el("td.xs", r.value.role || "—"),
+                  el("td.xs.muted", r.value.photoUrl ? "yes" : "—"),
                 ),
               ),
             ),
@@ -202,8 +238,8 @@ export function openImportDialog({ onImported }) {
     body: el(
       "div.stack",
       Notice(
-        "Required columns: Name, Team, Email. Optional: Mobile, Joined at Kuri, Standing amount, Role. " +
-          "Column order does not matter and the header spelling is forgiving.",
+        "Required columns: Name, Team, Email. Optional: Mobile, Joined at Kuri, Standing amount, " +
+          "Role, Photo URL. Column order does not matter and the header spelling is forgiving.",
         "info",
       ),
       el(
@@ -219,10 +255,17 @@ export function openImportDialog({ onImported }) {
       el(
         "p.small.muted",
         "Role may be ",
-        el("strong", "member"),
+        el("strong", "Member"),
         " or ",
-        el("strong", "coordinator"),
-        ". Admins cannot be created this way — set that individually afterwards.",
+        el("strong", "Coordinator"),
+        " (“Team coordinator” works too). Admins cannot be created this way — set that " +
+          "individually afterwards.",
+      ),
+      el(
+        "p.small.muted",
+        el("strong", "Photo URL"),
+        " is a direct link to an image — the groom’s photo is the centrepiece of the home page. " +
+          "Leave it blank and initials are shown instead; you can always add it later.",
       ),
       el(
         "div.row.wrap",
@@ -265,6 +308,11 @@ function validate({ headers, rows }) {
     const team = (raw.team || "").trim().toUpperCase();
     const email = (raw.email || "").trim().toLowerCase();
     const roleRaw = (raw.role || "member").trim().toLowerCase();
+    // People write "Team coordinator", "Co-ordinator", "TEAM COORDINATOR".
+    // Strip everything but letters and accept any of them, so a roster does
+    // not get rejected over a wording choice.
+    const roleKey = roleRaw.replace(/[^a-z]/g, "");
+    const role = ROLE_WORDS[roleKey];
 
     const joinedRaw = raw.joinedatkuri ?? raw.joinedatkurinumber ?? raw.joined ?? "";
     const amountRaw = raw.standingamount ?? raw.amount ?? raw.standing ?? "";
@@ -277,8 +325,8 @@ function validate({ headers, rows }) {
       team,
       email,
       mobile: (raw.mobile ?? raw.phone ?? "").trim(),
-      role: roleRaw,
-      photoUrl: (raw.photourl ?? raw.photo ?? "").trim(),
+      role: role || "member",
+      photoUrl: (raw.photourl ?? raw.photo ?? raw.photolink ?? raw.image ?? "").trim(),
       joinedAtKuriNumber,
       standingAmount,
       status: "active",
@@ -294,8 +342,8 @@ function validate({ headers, rows }) {
     if (!name) return fail("no name");
     if (!TEAMS.includes(team)) return fail(`team must be one of ${TEAMS.join(", ")}`);
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail("email looks wrong");
-    if (roleRaw === "admin") return fail("cannot create an admin by import");
-    if (!["member", "coordinator"].includes(roleRaw)) return fail("role must be member or coordinator");
+    if (roleKey === "admin") return fail("cannot create an admin by import");
+    if (!role) return fail(`role “${roleRaw}” not recognised — use member or coordinator`);
     if (!Number.isFinite(joinedAtKuriNumber) || joinedAtKuriNumber < 1) {
       return fail("joined at Kuri must be 1 or more");
     }
