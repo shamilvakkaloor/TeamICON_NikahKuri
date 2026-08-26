@@ -22,6 +22,29 @@ import { data, dataStore, nextKuriNumber } from "../lib/data.js";
 import { currentMember, isAdmin } from "../lib/auth.js";
 import { createMember, fetchContacts, setContact, updateMember } from "../lib/crud.js";
 import { DEFAULT_AMOUNT, TEAMS } from "../domain/ledger.js";
+import { openImportDialog } from "../components/import-members.js";
+import { downloadCsv } from "../lib/csv.js";
+
+/**
+ * Exports in the same shape the importer reads, so a roster can be pulled
+ * out, edited in a spreadsheet, and brought back.
+ */
+function exportRoster(contacts) {
+  const { members } = data();
+  downloadCsv(
+    `nikah-kuri-members-${new Date().toISOString().slice(0, 10)}.csv`,
+    ["Name", "Team", "Email", "Mobile", "Joined at Kuri", "Standing amount", "Role"],
+    members.map((m) => [
+      m.name,
+      m.team,
+      m.email,
+      contacts.get(m.id) || "",
+      m.joinedAtKuriNumber,
+      m.standingAmount,
+      m.role,
+    ]),
+  );
+}
 
 export function renderMembers(host) {
   const state = { team: "ALL", contacts: new Map() };
@@ -60,11 +83,30 @@ export function renderMembers(host) {
           "div.row.wrap.between",
           el("span.small.muted", `${members.length} members`),
           isAdmin()
-            ? (() => {
-                const b = Button("Add member", { onClick: () => openMemberDialog({ onSaved: refresh }) });
-                b.prepend(icon("plus", 16));
-                return b;
-              })()
+            ? el(
+                "div.row.wrap",
+                { style: { gap: "var(--s2)" } },
+                (() => {
+                  const b = Button("Export CSV", {
+                    variant: "outline",
+                    size: "sm",
+                    disabled: members.length === 0,
+                    onClick: () => exportRoster(state.contacts),
+                  });
+                  b.prepend(icon("download", 14));
+                  return b;
+                })(),
+                Button("Import CSV", {
+                  variant: "outline",
+                  size: "sm",
+                  onClick: () => openImportDialog({ onImported: refresh }),
+                }),
+                (() => {
+                  const b = Button("Add member", { onClick: () => openMemberDialog({ onSaved: refresh }) });
+                  b.prepend(icon("plus", 16));
+                  return b;
+                })(),
+              )
             : null,
         ),
         el(

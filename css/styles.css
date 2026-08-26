@@ -615,6 +615,28 @@ input.money-input {
   font-variant-numeric: tabular-nums;
 }
 
+input[type="file"] {
+  width: 100%;
+  padding: var(--s3);
+  border: 1px dashed var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunk);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+/* Import preview: rows that will not be written are visibly set aside. */
+table.data tr.dim-row td {
+  opacity: 0.55;
+}
+
+table.data td.truncate {
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .form-grid {
   display: grid;
   gap: var(--s4);
