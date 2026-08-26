@@ -11,6 +11,7 @@ import { openCsvImport, makeCounts } from "./csv-import.js";
 import { data } from "../lib/data.js";
 import { createMember, setContact, updateMember } from "../lib/crud.js";
 import { DEFAULT_AMOUNT, TEAMS } from "../domain/ledger.js";
+import { isMangledNumber, normaliseMobile } from "../lib/format.js";
 
 /** Accepted spellings for the role column, keyed on letters only. */
 const ROLE_WORDS = {
@@ -185,7 +186,9 @@ function validate({ headers, rows }, options = {}) {
     const standingAmount =
       amountRaw === "" ? DEFAULT_AMOUNT : Number(String(amountRaw).replace(/[₹,\s]/g, ""));
 
-    const mobile = (raw.mobile ?? raw.phone ?? "").trim();
+    // Tidies "+91 98765 43210" to "919876543210"; leaves a mangled value alone
+    // so the check below can still recognise and refuse it.
+    const mobile = normaliseMobile(raw.mobile ?? raw.phone ?? "");
 
     const value = {
       name,
@@ -220,8 +223,8 @@ function validate({ headers, rows }, options = {}) {
     // the missing digits cannot be recovered from what it wrote. Refusing the
     // row is the only honest option — importing it would store a number that
     // looks plausible and cannot ring anyone.
-    if (/\d[eE][+-]?\d/.test(mobile)) {
-      return fail("Excel wrote this mobile as 9.2E+11 — format the Mobile column as Text");
+    if (isMangledNumber(mobile)) {
+      return fail("Excel wrote this mobile as 9.2E+11 — export from Google Sheets instead");
     }
 
     if (seen.has(email)) return fail("this email appears twice in the file");

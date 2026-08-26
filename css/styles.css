@@ -630,6 +630,12 @@ table.data tr.dim-row td {
   opacity: 0.55;
 }
 
+/* Data that is known to be wrong, rather than merely absent. */
+.flag {
+  color: var(--owed);
+  font-style: italic;
+}
+
 /* An inline text button that reads as a link inside a meta line. */
 .linkish {
   border: 0;

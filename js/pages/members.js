@@ -17,7 +17,7 @@ import {
   toast,
 } from "../lib/ui.js";
 import { icon } from "../lib/icons.js";
-import { money } from "../lib/format.js";
+import { isMangledNumber, money, normaliseMobile } from "../lib/format.js";
 import { data, dataStore, nextKuriNumber } from "../lib/data.js";
 import { currentMember, isAdmin } from "../lib/auth.js";
 import { createMember, fetchContacts, setContact, updateMember } from "../lib/crud.js";
@@ -110,6 +110,36 @@ export function renderMembers(host) {
               )
             : null,
         ),
+        // Excel writes a 12-digit mobile as 9.19048E+11 and the last six
+        // digits never reach the file. Say so once, loudly, with the way out.
+        (() => {
+          const damaged = [...state.contacts.values()].filter(isMangledNumber).length;
+          if (!isAdmin() || damaged === 0) return null;
+          return el(
+            "div.notice.danger",
+            el(
+              "span",
+              el(
+                "strong",
+                `${damaged} mobile number${damaged === 1 ? " was" : "s were"} damaged by Excel.`,
+              ),
+              " They were written as 9.19048E+11, which keeps only the first six digits — the rest " +
+                "are gone and cannot be recovered from what was stored. Export the roster again " +
+                "from Google Sheets (File → Download → CSV) rather than through Excel, then use " +
+                "Import CSV with ",
+              el("strong", "Update members who are already added"),
+              " ticked.",
+              el(
+                "div",
+                { style: { marginTop: "var(--s3)" } },
+                Button("Import CSV to fix", {
+                  size: "sm",
+                  onClick: () => openImportDialog({ onImported: refresh }),
+                }),
+              ),
+            ),
+          );
+        })(),
         el(
           "div.pill-row",
           el(
@@ -159,7 +189,16 @@ export function renderMembers(host) {
                   if (m.standingAmount !== DEFAULT_AMOUNT) {
                     meta.append(` · standing ${money(m.standingAmount)}`);
                   }
-                  if (isAdmin() && mobile) meta.append(` · ${mobile}`);
+                  if (isAdmin() && mobile) {
+                    // Showing 919048000000 would look like a real number. It
+                    // is not one, and never was.
+                    meta.append(" · ");
+                    meta.append(
+                      isMangledNumber(mobile)
+                        ? el("span.flag", "number lost — re-import")
+                        : mobile,
+                    );
+                  }
 
                   return el(
                     `div.ledger-row${m.status === "exited" ? ".dim" : ""}`,
@@ -346,9 +385,13 @@ function openMemberDialog({ member, mobile = "", onSaved }) {
       Field({
         label: "Mobile",
         hint: "Stored separately — only the admin can read it.",
+        error: isMangledNumber(state.mobile)
+          ? "Excel damaged this number — only the first six digits survive. Type it in full."
+          : null,
         control: Input({
           type: "tel",
           value: state.mobile,
+          placeholder: "919876543210",
           oninput: (e) => {
             state.mobile = e.target.value;
           },
@@ -422,6 +465,18 @@ function openMemberDialog({ member, mobile = "", onSaved }) {
       return;
     }
 
+    // Refuse to write a number back that is already known to be wrong.
+    if (isMangledNumber(state.mobile)) {
+      errorHost.append(
+        Notice(
+          "That mobile number is Excel's damaged version — saving it would keep a number that " +
+            "cannot ring anyone. Type the real one, or clear the field.",
+          "danger",
+        ),
+      );
+      return;
+    }
+
     // Nobody can remove the last admin. Without this, demoting yourself as the
     // only admin locks the whole group out of every write — there would be no
     // account left that could put it back.
@@ -462,7 +517,7 @@ function openMemberDialog({ member, mobile = "", onSaved }) {
 
       if (member) {
         await updateMember(member.id, payload, member);
-        await setContact(member.id, state.mobile.trim());
+        await setContact(member.id, normaliseMobile(state.mobile));
       } else {
         const docRef = await createMember({
           ...payload,
@@ -471,7 +526,7 @@ function openMemberDialog({ member, mobile = "", onSaved }) {
           amountHistory: [],
         });
         // Contact details go to their own admin-only path, never the member doc.
-        if (state.mobile.trim()) await setContact(docRef.id, state.mobile.trim());
+        if (state.mobile.trim()) await setContact(docRef.id, normaliseMobile(state.mobile));
       }
 
       toast(

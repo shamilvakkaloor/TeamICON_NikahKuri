@@ -50,6 +50,27 @@ export function countdown(target) {
   return { label: `${days} days left`, tone: "ok" };
 }
 
+/**
+ * True when Excel has written a number in scientific notation.
+ *
+ * "9.19048E+11" keeps six significant digits, so a 12-digit mobile loses its
+ * last six — a million possibilities. Nothing can recover it from the stored
+ * value, so the only honest thing is to recognise it and say so rather than
+ * render 919048000000 as if it were somebody's phone.
+ */
+export function isMangledNumber(value) {
+  return /\d[eE][+-]?\d/.test(String(value ?? ""));
+}
+
+/** Keep digits and a leading +, drop the spaces, dashes and brackets. */
+export function normaliseMobile(value) {
+  const s = String(value ?? "").trim();
+  if (!s || isMangledNumber(s)) return s;
+  const plus = s.startsWith("+");
+  const digits = s.replace(/\D/g, "");
+  return plus ? `+${digits}` : digits;
+}
+
 export function initials(name) {
   return (name || "")
     .split(/\s+/)

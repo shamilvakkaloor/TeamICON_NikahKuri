@@ -293,11 +293,26 @@ initials rather than showing a broken image.
 Google Photos share links cannot be used at all. Put the file in Drive instead.
 
 **The mobile numbers look like 9.19895E+11.**
-Excel did that on export, and the missing digits are not recoverable from what
-it wrote — the app now refuses such rows rather than storing a number that
-cannot ring anyone. To fix a batch that already went in: format the Mobile
-column as **Text** in Excel, export again, then Members → Import CSV and tick
-**Update members who are already added**.
+Excel does this to any number longer than 11 digits, and it happens *when the
+CSV is written* — the file itself only ever contained `9.19895E+11`. That form
+keeps six significant digits, so an Indian mobile loses its last six. They
+cannot be recovered from what was stored, by this app or anything else.
+
+The app now refuses such rows on import and shows any already stored as
+**number lost — re-import** rather than printing 919895000000 as though it were
+somebody's phone.
+
+To repair a batch that already went in:
+
+1. Go back to the **original Google Sheet**, not the Excel copy — the Excel
+   file has already lost the digits.
+2. **File → Download → Comma-separated values.** Google Sheets writes long
+   numbers out in full; Excel is the step that breaks them.
+3. Members → **Import CSV**, tick **Update members who are already added**.
+
+If you must go through Excel, select the Mobile column and set it to **Text**
+*before* the numbers are entered or pasted. Formatting it afterwards does not
+bring the digits back.
 
 **Someone forgot which Google account they used.**
 Members → Edit → change the email to the one they actually use. The app
