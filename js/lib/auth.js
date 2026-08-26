@@ -62,6 +62,14 @@ export async function initAuth() {
 
     authStore.set({ firebaseUser: user });
     startDataListeners();
+
+    // The setup check has to run for signed-in accounts too. Whoever performs
+    // the first run signs in *before* any member record exists, so without
+    // this the empty roster below concludes "not on the member list" and the
+    // setup screen becomes permanently unreachable.
+    checkSetup().then((pending) => {
+      if (pending) authStore.set({ status: "setup" });
+    });
   });
 
   // The roster arrives asynchronously, so resolving which member is signed in
@@ -75,10 +83,17 @@ export async function initAuth() {
 
     if (member) {
       authStore.set({ status: "ready", member });
-    } else if (!loading) {
-      // Only after the roster has actually loaded — otherwise a slow first
-      // snapshot flashes the "not on the list" screen at a legitimate member.
-      authStore.set({ status: "unrecognised", member: null });
+      return;
+    }
+
+    // Only after the roster has actually loaded — otherwise a slow first
+    // snapshot flashes the "not on the list" screen at a legitimate member.
+    if (!loading) {
+      checkSetup().then((pending) => {
+        // An empty roster during first run is expected, not a rejection.
+        if (pending) return authStore.set({ status: "setup" });
+        if (!authStore.get().member) authStore.set({ status: "unrecognised", member: null });
+      });
     }
   });
 }
@@ -91,12 +106,19 @@ export async function initAuth() {
  * pending" on timeout, because showing the login to a first-run user is a far
  * smaller mistake than showing the setup screen to an existing group.
  */
-async function checkSetup() {
-  const timeout = new Promise((resolve) => setTimeout(() => resolve(false), 6000));
-  const probe = isSetupComplete()
-    .then((done) => !done)
-    .catch(() => false);
-  return Promise.race([probe, timeout]);
+let setupProbe = null;
+
+function checkSetup() {
+  // Memoised: several call sites need the answer and it cannot change without
+  // a page reload — completing setup reloads.
+  if (!setupProbe) {
+    const timeout = new Promise((resolve) => setTimeout(() => resolve(false), 6000));
+    const probe = isSetupComplete()
+      .then((done) => !done)
+      .catch(() => false);
+    setupProbe = Promise.race([probe, timeout]);
+  }
+  return setupProbe;
 }
 
 export async function signIn() {

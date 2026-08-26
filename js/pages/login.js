@@ -1,6 +1,7 @@
 import { el, Button, Notice } from "../lib/ui.js";
 import { brandMark } from "../lib/icons.js";
 import { authStore, signIn } from "../lib/auth.js";
+import { dataStore } from "../lib/data.js";
 
 export function renderLogin(app) {
   const { error } = authStore.get();
@@ -34,6 +35,7 @@ export function renderLogin(app) {
 
 export function renderUnrecognised(app) {
   const { firebaseUser } = authStore.get();
+  const { error } = dataStore.get();
 
   app.replaceChildren(
     el(
@@ -46,6 +48,16 @@ export function renderUnrecognised(app) {
             "Ask the admin to add this email to your member record, then sign in again.",
           "warn",
         ),
+        // A denied read reaches this screen looking identical to a genuinely
+        // unknown account. Without showing it, the real cause — usually rules
+        // that were never pasted — stays invisible.
+        error
+          ? Notice(
+              `The roster could not be read: ${error}. If that mentions permissions, the security ` +
+                "rules in the Firebase console are missing or out of date (SETUP.md, step 5).",
+              "danger",
+            )
+          : null,
         Button("Sign out", {
           variant: "outline block",
           onClick: () => import("../lib/auth.js").then((m) => m.signOutNow()),
