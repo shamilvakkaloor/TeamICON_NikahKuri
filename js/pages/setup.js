@@ -12,6 +12,7 @@ import { brandMark } from "../lib/icons.js";
 import { TEAMS } from "../domain/ledger.js";
 import { completeSetup } from "../lib/crud.js";
 import { getFirebaseAuth, googleProvider, signInWithPopup } from "../lib/firebase.js";
+import { friendlyAuthError } from "../lib/auth.js";
 
 export function renderSetup(app) {
   const state = { groupName: "Team ICON", name: "", team: "KOZHIKODE", busy: false, error: null };
@@ -97,7 +98,10 @@ export function renderSetup(app) {
       await signInWithPopup(getFirebaseAuth(), googleProvider);
       draw();
     } catch (e) {
-      state.error = e?.message || "Sign-in failed.";
+      // The setup screen is exactly where a first deploy hits
+      // auth/unauthorized-domain, so it needs the explanatory message rather
+      // than the raw Firebase one.
+      state.error = friendlyAuthError(e);
       draw();
     }
   }

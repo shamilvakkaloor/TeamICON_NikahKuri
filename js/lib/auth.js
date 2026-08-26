@@ -113,14 +113,18 @@ export async function signOutNow() {
   await signOut(getFirebaseAuth());
 }
 
-function friendlyAuthError(e) {
+export function friendlyAuthError(e) {
   const code = e?.code || "";
   if (code.includes("popup-closed")) return "Sign-in was cancelled.";
   if (code.includes("popup-blocked")) {
     return "Your browser blocked the sign-in popup. Allow popups for this site and try again.";
   }
   if (code.includes("unauthorized-domain")) {
-    return "This web address isn’t authorised in Firebase. Add it under Authentication → Settings → Authorized domains.";
+    return (
+      `Google sign-in isn’t allowed on ${window.location.hostname} yet. In the Firebase console: ` +
+      "Authentication → Settings → Authorized domains → Add domain, and paste that address. " +
+      "It takes effect immediately."
+    );
   }
   if (code.includes("operation-not-allowed")) {
     return "Google sign-in isn’t switched on for this Firebase project yet (SETUP.md, step 3).";

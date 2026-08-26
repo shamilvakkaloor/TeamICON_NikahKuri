@@ -231,9 +231,19 @@ round is refunded in full.
 Members → Edit → change the email to the one they actually use. The app
 re-syncs their access automatically.
 
-**Handing the admin role to someone else.**
-Members → Edit → Role → Admin. There can only be one admin, so the app warns
-you and drops the previous one to ordinary member immediately.
+**Adding a second admin, or handing the role over.**
+Members → Edit → Role → Admin. The app then asks which you mean:
+
+- **Add as an additional admin** (the default) — you both keep full access.
+  Useful if you want someone to cover for you.
+- **Hand over** — you drop to ordinary member the moment it saves.
+
+Handing over is deliberate because you cannot undo it yourself: once you are
+not an admin, you cannot make yourself one again. Someone else has to.
+
+For the same reason the app refuses to remove the last admin. If it did, no
+account would be left that could write anything — including putting one back.
+Make someone else an admin first.
 
 **The public page shows nothing.**
 It reads a separate, deliberately small projection. Open a round and press

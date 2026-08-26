@@ -93,15 +93,23 @@ so the obligation is visible at the moment it is created.
 
 | Role | Can do |
 |---|---|
-| **Admin** (single, transferable) | Everything: members, amounts, rounds, payments, opt-outs, closing rounds, settlement |
+| **Admin** (transferable, and you may have more than one) | Everything: members, amounts, rounds, payments, opt-outs, closing rounds, settlement |
 | **Coordinator** (one per team) | Records his own team's collections and hands the team total to the groom |
 | **Member** | Views his own dues with the reason for each, plus all group-wide payment data |
 | **Public** | Round summaries and the current groom — nothing else |
 
 Admin and coordinators are ordinary kuri members who pay in and take their
 turn. Role is a field on the member record, not an account type, and both are
-transferable to anyone. Handing over the admin role drops the incumbent
-straight to ordinary member — the app enforces exactly one admin at a time.
+transferable to anyone.
+
+There is normally one admin, but you can have more. Promoting someone asks
+which you mean — **add as an additional admin** (the default; nobody loses
+anything) or **hand over**, which drops you to ordinary member. Handing over
+is deliberate because it is the one change you cannot undo yourself: once you
+are not an admin, you cannot make yourself one again.
+
+The app refuses to remove the last admin for the same reason — with none left,
+no account could write anything, including putting one back.
 
 ---
 

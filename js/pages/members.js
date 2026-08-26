@@ -10,6 +10,7 @@ import {
   Money,
   MoneyInput,
   Notice,
+  Radio,
   Select,
   TeamDot,
   openDialog,
@@ -18,7 +19,7 @@ import {
 import { icon } from "../lib/icons.js";
 import { money } from "../lib/format.js";
 import { data, dataStore, nextKuriNumber } from "../lib/data.js";
-import { isAdmin } from "../lib/auth.js";
+import { currentMember, isAdmin } from "../lib/auth.js";
 import { createMember, fetchContacts, setContact, updateMember } from "../lib/crud.js";
 import { DEFAULT_AMOUNT, TEAMS } from "../domain/ledger.js";
 
@@ -172,18 +173,71 @@ function openMemberDialog({ member, mobile = "", onSaved }) {
   const errorHost = el("div");
   const adminWarningHost = el("div");
 
-  // Exactly one admin at any time. Promoting someone demotes the incumbent.
-  const currentAdmin = members.find((m) => m.role === "admin" && m.id !== member?.id);
+  /**
+   * There may be more than one admin, but only on purpose.
+   *
+   * Promoting someone used to demote whoever held the role, silently. That is
+   * a bad default in both directions: it surprises the person doing it, and
+   * stepping down is the one change an admin cannot undo on their own. So the
+   * choice is explicit, and the non-destructive option leads.
+   */
+  const me = currentMember();
+  const otherAdmins = members.filter((m) => m.role === "admin" && m.id !== member?.id);
+  const editingSelf = Boolean(member && me && member.id === me.id);
+  const canHandOver = Boolean(me && me.role === "admin" && !editingSelf);
+  state.adminMode = "add";
 
   function drawAdminWarning() {
+    const promoting = state.role === "admin" && member?.role !== "admin";
+
+    if (!promoting || otherAdmins.length === 0) {
+      return adminWarningHost.replaceChildren(
+        state.role === "admin" && otherAdmins.length === 0 && !editingSelf
+          ? Notice(`${state.name || "This member"} becomes the admin.`, "info")
+          : null,
+      );
+    }
+
     adminWarningHost.replaceChildren(
-      state.role === "admin" && currentAdmin
+      Field({
+        label: "There is already an admin",
+        control: el(
+          "div.stack",
+          { style: { gap: "var(--s2)" } },
+          Radio(
+            `Add as an additional admin — ${otherAdmins.map((a) => a.name).join(", ")} keeps the role too`,
+            {
+              name: "adminMode",
+              checked: state.adminMode === "add",
+              onChange: () => {
+                state.adminMode = "add";
+                drawAdminWarning();
+              },
+            },
+          ),
+          canHandOver
+            ? Radio(`Hand over — you (${me.name}) drop to ordinary member`, {
+                name: "adminMode",
+                checked: state.adminMode === "handover",
+                onChange: () => {
+                  state.adminMode = "handover";
+                  drawAdminWarning();
+                },
+              })
+            : null,
+        ),
+      }),
+      state.adminMode === "handover"
         ? Notice(
-            `There can only be one admin. Saving this hands the role over — ${currentAdmin.name} ` +
-              "drops to ordinary member immediately.",
+            "You lose admin access the moment this saves, and you cannot give it back to " +
+              "yourself. Only do this if you mean to stop running the kuri.",
             "warn",
           )
-        : null,
+        : Notice(
+            "Both of you will be able to add members, open rounds, record payments and run " +
+              "settlement. Every change is still recorded against whoever made it.",
+            "info",
+          ),
     );
   }
   drawAdminWarning();
@@ -312,6 +366,19 @@ function openMemberDialog({ member, mobile = "", onSaved }) {
       return;
     }
 
+    // Nobody can remove the last admin. Without this, demoting yourself as the
+    // only admin locks the whole group out of every write — there would be no
+    // account left that could put it back.
+    if (member?.role === "admin" && state.role !== "admin" && otherAdmins.length === 0) {
+      errorHost.append(
+        Notice(
+          `${member.name} is the only admin. Make someone else an admin first, then change this.`,
+          "danger",
+        ),
+      );
+      return;
+    }
+
     const payload = {
       name: state.name.trim(),
       team: state.team,
@@ -323,11 +390,18 @@ function openMemberDialog({ member, mobile = "", onSaved }) {
     };
 
     try {
-      if (state.role === "admin" && currentAdmin) {
-        // Handing over the admin role drops the incumbent to ordinary member.
-        // Passing `currentAdmin` re-syncs his index entry, which is what
-        // actually removes his access.
-        await updateMember(currentAdmin.id, { role: "member" }, currentAdmin);
+      const handingOver =
+        state.role === "admin" &&
+        member?.role !== "admin" &&
+        otherAdmins.length > 0 &&
+        state.adminMode === "handover" &&
+        canHandOver;
+
+      if (handingOver) {
+        // Passing `me` re-syncs the index entry, which is what actually
+        // removes the access — the rules read the role from there, not from
+        // the member document.
+        await updateMember(me.id, { role: "member" }, me);
       }
 
       if (member) {
@@ -344,7 +418,14 @@ function openMemberDialog({ member, mobile = "", onSaved }) {
         if (state.mobile.trim()) await setContact(docRef.id, state.mobile.trim());
       }
 
-      toast(member ? "Member updated." : "Member added.", "success");
+      toast(
+        handingOver
+          ? `${state.name.trim()} is now the admin. You are an ordinary member.`
+          : member
+            ? "Member updated."
+            : "Member added.",
+        "success",
+      );
       close();
       onSaved();
     } catch (e) {
