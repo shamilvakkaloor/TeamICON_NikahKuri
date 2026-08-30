@@ -54,27 +54,13 @@ export function icon(name, size = 18) {
   return svg;
 }
 
-/** The thin-stroke compass mark used on the login and public pages. */
 export function brandMark(size = 64) {
-  const ns = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(ns, "svg");
-  svg.setAttribute("width", size);
-  svg.setAttribute("height", size);
-  svg.setAttribute("viewBox", "0 0 64 64");
-  svg.setAttribute("fill", "none");
-  svg.setAttribute("aria-hidden", "true");
-
-  const shapes = [
-    ["circle", { cx: 32, cy: 32, r: 22, stroke: "var(--green)", "stroke-width": 1.5 }],
-    ["circle", { cx: 32, cy: 32, r: 13, stroke: "var(--gold)", "stroke-width": 1.5, "stroke-dasharray": "3 4" }],
-    ["path", { d: "M32 10v44M10 32h44", stroke: "var(--green)", "stroke-width": 1.5, "stroke-opacity": 0.28 }],
-    ["circle", { cx: 32, cy: 32, r: 4, fill: "var(--gold)" }],
-  ];
-
-  for (const [tag, attrs] of shapes) {
-    const node = document.createElementNS(ns, tag);
-    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
-    svg.append(node);
-  }
-  return svg;
+  const img = document.createElement("img");
+  img.setAttribute("src", "logo.jpg");
+  img.setAttribute("width", size);
+  img.setAttribute("height", size);
+  img.setAttribute("alt", "Nikah Kuri Team ICON Logo");
+  img.style.borderRadius = "20%"; // Adding a bit of border-radius to make it look nice, optional.
+  img.style.objectFit = "cover";
+  return img;
 }
