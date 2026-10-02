@@ -374,8 +374,51 @@ h3 {
 
 .groom-head {
   display: flex;
+  flex-direction: column;
   gap: var(--s4);
   align-items: center;
+}
+
+.groom-head > .avatar.lg {
+  width: 180px;
+  height: 180px;
+  overflow: hidden;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.groom-head > .avatar img {
+  min-width: 0;
+  min-height: 0;
+}
+
+.groom-head > div {
+  width: 100%;
+  text-align: center;
+}
+
+.groom-head .row {
+  justify-content: center;
+}
+
+@media (min-width: 640px) {
+  .groom-head {
+    flex-direction: row;
+    gap: var(--s5);
+  }
+
+  .groom-head > .avatar.lg {
+    width: 220px;
+    height: 220px;
+  }
+
+  .groom-head > div {
+    width: auto;
+    text-align: left;
+  }
+
+  .groom-head .row {
+    justify-content: flex-start;
+  }
 }
 
 .stack {
