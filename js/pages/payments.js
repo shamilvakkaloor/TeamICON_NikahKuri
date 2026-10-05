@@ -20,7 +20,8 @@ import { dateInputValue, fmtDate, money } from "../lib/format.js";
 import { activeRound, data, dataStore, memberById } from "../lib/data.js";
 import { buildRoundLedger, loadRoundContext } from "../lib/roundLedger.js";
 import { currentMember, isAdmin, isCoordinator } from "../lib/auth.js";
-import { editPayment, recordPayment, voidPayment } from "../lib/crud.js";
+import { editPayment, getSettings, recordPayment, voidPayment } from "../lib/crud.js";
+import { downloadReceipt } from "../lib/receipt.js";
 import { openPaymentsImport } from "../components/import-payments.js";
 
 export function renderPayments(host) {
@@ -165,7 +166,7 @@ export function renderPayments(host) {
                   else if (p.edited) title.append(" ", Badge("edited", "pending"));
 
                   return el(
-                    `div.ledger-row${p.voided ? ".dim" : ""}`,
+                    `div.ledger-row.payment-row${p.voided ? ".dim" : ""}`,
                     el("span.avatar", TeamDot(p.team)),
                     el(
                       "div.ledger-main",
@@ -176,6 +177,13 @@ export function renderPayments(host) {
                       ),
                     ),
                     Money(p.amount, { tone: p.voided ? "muted" : "paid" }),
+                    !p.voided && p.amount > 0
+                      ? Button("Download receipt", {
+                          variant: "outline",
+                          size: "sm",
+                          onClick: () => downloadPaymentReceipt(p),
+                        })
+                      : null,
                     isAdmin() && !p.voided
                       ? Button("Remove", {
                           variant: "ghost",
@@ -199,6 +207,25 @@ export function renderPayments(host) {
   }
 
   return unsub;
+}
+
+async function downloadPaymentReceipt(payment) {
+  try {
+    const settings = await getSettings();
+    payment = data().payments.find((p) => p.id === payment.id);
+    if (!payment) throw new Error("This payment is no longer available. Refresh and try again.");
+    const round = data().rounds.find((r) => r.id === payment.kuriId);
+    downloadReceipt({
+      ...payment,
+      groupName: settings?.groupName || "Team ICON",
+      payerName: memberById(payment.fromMemberId)?.name || "Not recorded",
+      groomName: memberById(payment.toMemberId)?.name || "Not recorded",
+      recorderName: memberById(payment.recordedByMemberId)?.name || "Not recorded",
+      kuriNumber: round?.kuriNumber ?? "Not recorded",
+    });
+  } catch (e) {
+    toast(e?.message || "Could not download the receipt. Please try again.", "danger");
+  }
 }
 
 function openRecordDialog() {
