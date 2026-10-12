@@ -10,58 +10,91 @@ export function createReceiptCanvas(details, createCanvas = () => document.creat
   canvas.width = WIDTH;
   canvas.height = HEIGHT;
   const ctx = canvas.getContext("2d");
-  const green = "#1f5c46";
-  ctx.fillStyle = "#ffffff";
+  const green = "#234c3e";
+  const gold = "#a6884b";
+  const muted = "#777467";
+  ctx.fillStyle = "#fcfaf4";
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
-  ctx.strokeStyle = "#d6ded9";
+  ctx.strokeStyle = gold;
   ctx.lineWidth = 3;
-  ctx.strokeRect(40, 40, WIDTH - 80, HEIGHT - 80);
+  ctx.strokeRect(44, 44, WIDTH - 88, HEIGHT - 88);
+  ctx.lineWidth = 1;
+  ctx.strokeRect(58, 58, WIDTH - 116, HEIGHT - 116);
 
-  function text(value, x, y, size = 36, color = "#1b2420", bold = false, maxWidth = 1056) {
+  function text(value, x, y, size = 36, color = green, serif = false, align = "left", maxWidth = 1016) {
     value = String(value || "Not recorded");
     ctx.fillStyle = color;
-    ctx.font = `${bold ? "bold " : ""}${size}px Arial, sans-serif`;
-    // Fit complete names and references rather than clipping or shortening them.
+    ctx.textAlign = align;
+    ctx.font = `${size}px ${serif ? 'Georgia, "Times New Roman", serif' : 'Arial, sans-serif'}`;
     ctx.fillText(value, x, y, maxWidth);
   }
+  function line(x1, y, x2, color = "#ded5bf") {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x1, y);
+    ctx.lineTo(x2, y);
+    ctx.stroke();
+  }
+  function ornament(y) {
+    line(360, y, 592, gold);
+    line(648, y, 880, gold);
+    ctx.save();
+    ctx.translate(620, y);
+    ctx.rotate(Math.PI / 4);
+    ctx.strokeStyle = gold;
+    ctx.strokeRect(-8, -8, 16, 16);
+    ctx.restore();
+  }
+  // Corner flourishes are decorative; no seal or signature is implied.
+  for (const [x, y, direction] of [[82, 82, 1], [1158, 1666, -1]]) {
+    ctx.strokeStyle = gold;
+    ctx.beginPath();
+    ctx.moveTo(x, y + direction * 46);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x + direction * 46, y);
+    ctx.stroke();
+  }
 
-  text(details.groupName || "Team ICON", 92, 135, 46, green, true);
-  text("NIKAH KURI", 92, 195, 28, "#6b7370");
-  text("PAYMENT RECEIPT", 92, 292, 48, green, true);
-  text(details.edited ? "Corrected payment record" : "Payment recorded in the group ledger", 92, 345, 28, "#6b7370");
+  text(details.groupName || "Team ICON", 620, 163, 52, green, true, "center");
+  text("N I K A H   K U R I", 620, 218, 25, muted, false, "center");
+  ornament(267);
+  text("Payment Receipt", 620, 353, 68, green, true, "center");
+  text(details.edited ? "CORRECTED PAYMENT RECORD" : "ACKNOWLEDGEMENT OF CONTRIBUTION", 620, 407, 23, muted, false, "center");
 
-  ctx.fillStyle = "#e6f0eb";
-  ctx.fillRect(92, 390, 1056, 180);
-  text("AMOUNT RECEIVED", 124, 444, 26, green, true, 990);
+  text("PAYMENT DATE", 112, 487, 23, muted);
+  text(fmtDate(details.date), 112, 534, 36, green, true);
+  text("ROUND", 1128, 487, 23, muted, false, "right");
+  text(`Kuri ${details.kuriNumber}`, 1128, 534, 36, green, true, "right");
+  line(112, 566, 1128);
+
+  function field(label, value, y) {
+    text(label, 112, y, 23, muted);
+    text(value, 112, y + 51, 42, green, true);
+    line(112, y + 77, 1128);
+  }
+  field("RECEIVED WITH THANKS FROM", details.payerName, 629);
+  field("REGIONAL TEAM", details.team, 765);
+  field("CONTRIBUTION FOR GROOM", details.groomName, 901);
+
+  ctx.fillStyle = "#edf0e6";
+  ctx.fillRect(112, 1030, 1016, 180);
+  line(112, 1030, 1128, gold);
+  line(112, 1210, 1128, gold);
+  text("AMOUNT RECEIVED", 620, 1080, 24, muted, false, "center");
   const amount = new Intl.NumberFormat("en-IN", {
     style: "currency", currency: "INR", minimumFractionDigits: 2, maximumFractionDigits: 2,
   }).format(details.amount);
-  text(amount, 124, 532, 76, green, true, 990);
+  text(amount, 620, 1170, 80, green, true, "center", 940);
 
-  const fields = [
-    ["RECEIVED FROM", details.payerName],
-    ["TEAM", details.team],
-    ["FOR GROOM", details.groomName],
-    ["ROUND", `Kuri ${details.kuriNumber}`],
-    ["PAYMENT DATE", fmtDate(details.date)],
-    ["RECORDED BY", details.recorderName],
-  ];
-  fields.forEach(([label, value], i) => {
-    const y = 645 + i * 116;
-    text(label, 92, y, 24, "#6b7370", true);
-    text(value, 92, y + 48, 38);
-  });
-
-  ctx.strokeStyle = "#d6ded9";
-  ctx.beginPath();
-  ctx.moveTo(92, 1368);
-  ctx.lineTo(1148, 1368);
-  ctx.stroke();
-  text("RECEIPT / PAYMENT REFERENCE", 92, 1422, 24, "#6b7370", true);
-  text(details.id, 92, 1464, 28);
-  text("This receipt acknowledges this payment only.", 92, 1550, 27, "#6b7370");
-  text("Computer-generated receipt. No signature required.", 92, 1595, 27, "#6b7370");
-  text("Issued from the payment ledger; reflects the current record.", 92, 1640, 24, "#6b7370");
+  text("RECORDED BY", 112, 1280, 23, muted);
+  text(details.recorderName, 112, 1326, 36, green, true);
+  text("RECEIPT / PAYMENT REFERENCE", 112, 1393, 23, muted);
+  text(details.id, 112, 1434, 27, green);
+  ornament(1490);
+  text("This receipt acknowledges this contribution only.", 620, 1547, 25, muted, false, "center");
+  text("Computer-generated receipt. No signature required.", 620, 1590, 25, muted, false, "center");
+  text("Reflects the current payment ledger record.", 620, 1632, 23, muted, false, "center");
   return canvas;
 }
 
@@ -101,14 +134,19 @@ export function receiptPdf(canvas) {
   return new Blob(chunks, { type: "application/pdf" });
 }
 
-export function downloadReceipt(details) {
+export async function downloadReceipt(details, format = "pdf") {
+  if (!["pdf", "png"].includes(format)) throw new Error("Choose PDF or PNG format.");
   if (details.voided || !Number.isFinite(details.amount) || details.amount <= 0) {
     throw new Error("Receipts are available only for valid payments.");
   }
-  const url = URL.createObjectURL(receiptPdf(createReceiptCanvas(details)));
+  const canvas = createReceiptCanvas(details);
+  const blob = format === "pdf" ? receiptPdf(canvas) : await new Promise((resolve, reject) => {
+    canvas.toBlob((image) => image ? resolve(image) : reject(new Error("Could not create the receipt image.")), "image/png");
+  });
+  const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `Nikah-Kuri-${details.kuriNumber}-receipt-${details.id.replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`;
+  link.download = `Nikah-Kuri-${details.kuriNumber}-receipt-${details.id.replace(/[^a-zA-Z0-9_-]/g, "_")}.${format}`;
   document.body.append(link);
   link.click();
   link.remove();

@@ -181,7 +181,7 @@ export function renderPayments(host) {
                       ? Button("Download receipt", {
                           variant: "outline",
                           size: "sm",
-                          onClick: () => downloadPaymentReceipt(p),
+                          onClick: () => openReceiptDialog(p),
                         })
                       : null,
                     isAdmin() && !p.voided
@@ -209,20 +209,32 @@ export function renderPayments(host) {
   return unsub;
 }
 
-async function downloadPaymentReceipt(payment) {
+function openReceiptDialog(payment) {
+  const close = openDialog({
+    title: "Download payment receipt",
+    body: el("p", "Choose an A6 PDF for printing or a high-resolution PNG image for sharing."),
+    footer: [
+      Button("Cancel", { variant: "ghost", onClick: () => close() }),
+      Button("Download PNG", { variant: "outline", onClick: () => downloadPaymentReceipt(payment, "png") }),
+      Button("Download PDF", { onClick: () => downloadPaymentReceipt(payment, "pdf") }),
+    ],
+  });
+}
+
+async function downloadPaymentReceipt(payment, format) {
   try {
     const settings = await getSettings();
     payment = data().payments.find((p) => p.id === payment.id);
     if (!payment) throw new Error("This payment is no longer available. Refresh and try again.");
     const round = data().rounds.find((r) => r.id === payment.kuriId);
-    downloadReceipt({
+    await downloadReceipt({
       ...payment,
       groupName: settings?.groupName || "Team ICON",
       payerName: memberById(payment.fromMemberId)?.name || "Not recorded",
       groomName: memberById(payment.toMemberId)?.name || "Not recorded",
       recorderName: memberById(payment.recordedByMemberId)?.name || "Not recorded",
       kuriNumber: round?.kuriNumber ?? "Not recorded",
-    });
+    }, format);
   } catch (e) {
     toast(e?.message || "Could not download the receipt. Please try again.", "danger");
   }
